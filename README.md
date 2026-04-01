@@ -16,6 +16,26 @@
 - 用户侧发布前仅通过开发者平台进行测试与验收。
 - 当作品遵守本规范并在开发者平台运行通过时，Flutter 侧应可直接使用。
 
+## 获取 WebSDK
+
+优先使用 npm 安装（GitHub Packages）：
+
+```bash
+npm install @nianxie/nianxie-interaction-sdk --@nianxie:registry=https://npm.pkg.github.com
+```
+
+如果需要固定版本，可指定版本号：
+
+```bash
+npm install @nianxie/nianxie-interaction-sdk@0.1.0 --registry=https://npm.pkg.github.com
+```
+
+如果你的模板工程是直接内置 SDK 文件，也可使用仓库内的 `websdk/nianxie-interaction-sdk.js`，并在页面中以相对路径引入：
+
+```html
+<script src="./nianxie-interaction-sdk.js"></script>
+```
+
 ---
 
 ## 0. 产物类型（先选模式）
