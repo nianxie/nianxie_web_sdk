@@ -1,31 +1,77 @@
-# Web SDK: Nianxie Interaction SDK
+# WebSDK 模板制作与接入总规范
 
-`websdk/nianxie-interaction-sdk.js` 用于 Web 与 Flutter 的交互通信。
+本文档是唯一权威规范，面向：
 
-## 核心规则（重要）
+- AI 代理（按规则自动生成小游戏模板）
+- 开发者（手工实现可上传、可运行的模板）
 
-- `sessionId/itemId/title` **强制带上**，由 SDK 自动管理并透传。
-- 开发者**不要手动维护**这三个字段，只传业务参数 `extras`。
-- Flutter 会在 WebView 初始化时注入上下文，SDK 自动读取。
+目标是保证产物可以：
 
-## 信号协议
+1. 在开发者平台上传并通过试运行
+2. 在 App 内完成一次完整握手与运行：`init -> ready -> start -> end`
+3. 作为“可上传 + 可生成 + 可运行”的模板被复用
 
-推荐统一采用四段式：
+---
 
-1. Flutter -> Web: `init`（`window.OnMiniInit(payload)`）
-2. Web -> Flutter: `ready`（`NianxieMiniReady`）
-3. Flutter -> Web: `start`（`window.OnMiniStart(payload)`，同时 Flutter 隐藏 entry cover）
-4. Web -> Flutter: `end`（`NianxieMiniEnd`）
+## 1. 必须遵守的协议与时序
 
-- JS -> Flutter
-  - `NianxieMiniReady`：互动资源就绪
-  - `NianxieMiniEnd`：互动结束
-- Flutter -> JS
-  - `window.OnMiniInit(payload)`：初始化信号（拿到 sessionId/itemId/title，加载资源）
-  - `window.OnMiniStart(payload)`：开始互动
-  - `window.OnMiniContext(payload)`：上下文同步（可选，SDK 自动监听）
+### 1.1 四段式生命周期（强约束）
 
-## 1) 原生 JS 用法
+1. Flutter -> Web：`window.OnMiniInit(payload)`（`eventId: interaction_init`）
+2. Web -> Flutter：`NianxieMiniReady`（通常 `eventId: interaction_ready`）
+3. Flutter -> Web：`window.OnMiniStart(payload)`（`eventId: interaction_start`）
+4. Web -> Flutter：`NianxieMiniEnd`（通常 `eventId: interaction_end`）
+
+任何模板都必须走完这个闭环，不能只跑本地逻辑不回传信号。
+
+### 1.2 payload 上下文规则（强约束）
+
+- `sessionId/itemId/title` 由 SDK 与宿主协同维护。
+- 模板逻辑**不要手写/硬编码**这三个字段。
+- 业务数据一律放 `extras`。
+
+### 1.3 craft 输入规则（强约束）
+
+- 模板运行数据优先从 `payload.extras.craft` 读取。
+- `payload.craft` 仅可作为兼容兜底，不应作为主通道。
+- 读取后必须进行 schema 校验，校验失败要可见反馈（不仅 console）。
+
+---
+
+## 2. 模板引擎最低能力
+
+模板本质是“解释器/执行器”：
+
+- 输入：外部 JSON（craft）
+- 过程：解析 + 校验 + 转换为内部状态
+- 输出：可交互的游戏流程与画面
+
+最低要求：
+
+- 运行内容由外部 craft 驱动，不允许把故事/关卡完全写死
+- 具备 schema（建议 Zod + JSON Schema 导出）
+- 有明确开始和结束条件，且开始路径可达至少一个结束节点
+
+---
+
+## 3. 画面与交付约束
+
+### 3.1 画面比例
+
+- 主画面必须兼容 `9:16` 纵向容器
+- 页面可自适应，但视觉比例不能跑偏
+
+### 3.2 打包交付
+
+- `npm run build` 后产物可直接交付
+- 不依赖远端 CDN JS 才能运行（离线/内网也可启动）
+- 推荐单文件策略（如 `vite-plugin-singlefile`），优先 `dist/index.html`
+
+---
+
+## 4. 实现模板（推荐写法）
+
+### 4.1 原生 JS 最小闭环
 
 ```html
 <script src="./nianxie-interaction-sdk.js"></script>
@@ -36,151 +82,120 @@
   });
 
   const offInit = sdk.onInit(async (payload) => {
-    console.log("init payload:", payload);
-    // 在这里做资源初始化，初始化完成后上报 ready
-    await sdk.sendReady({
-      extras: { stage: "assets-loaded" },
-    });
+    const craft = payload?.extras?.craft ?? payload?.craft;
+    if (!craft) {
+      // 需要可见错误提示
+      document.body.innerText = "craft 缺失，无法运行";
+      return;
+    }
+
+    // 1) 校验 craft  2) 加载资源  3) 准备完成后发送 ready
+    await sdk.sendReady({ extras: { stage: "assets-loaded" } });
   });
 
-  const offStart = sdk.onStart((payload) => {
-    console.log("start payload:", payload);
-    // Flutter 已发 start，开始真正执行互动
+  const offStart = sdk.onStart((_payload) => {
+    // 收到 start 才真正开始互动
   });
 
   async function finishInteraction() {
-    await sdk.sendEnd({
-      extras: { result: "success", score: 98 },
-    });
+    await sdk.sendEnd({ extras: { result: "completed" } });
   }
 
-  // 页面销毁
-  // offInit();
-  // offStart();
-  // sdk.destroy();
+  // 页面销毁时释放
+  // offInit(); offStart(); sdk.destroy();
 </script>
 ```
 
-## 2) React 用法
+### 4.2 React 最小闭环
 
-```javascript
-import { useEffect, useMemo } from "react";
+```tsx
+useEffect(() => {
+  const offInit = sdk.onInit(async (payload) => {
+    const craft = payload?.extras?.craft ?? payload?.craft;
+    if (!craft) throw new Error("craft missing");
+    await sdk.sendReady({ extras: { stage: "assets-loaded" } });
+  });
 
-export default function MiniPage() {
-  const sdk = useMemo(
-    () => window.NianxieInteractionSDK.createNianxieInteractionSDK(),
-    []
-  );
+  const offStart = sdk.onStart(() => {
+    // start 后进入可交互态
+  });
 
-  useEffect(() => {
-    const offInit = sdk.onInit(async (payload) => {
-      console.log("OnMiniInit", payload);
-      await sdk.sendReady({ extras: { stage: "assets-loaded" } });
-    });
-    const offStart = sdk.onStart(() => {
-      console.log("OnMiniStart");
-      // 这里开始互动主流程
-    });
-    return () => {
-      offInit();
-      offStart();
-      sdk.destroy();
-    };
-  }, [sdk]);
-
-  const onEnd = async () => {
-    await sdk.sendEnd({ extras: { result: "done" } });
+  return () => {
+    offInit();
+    offStart();
+    sdk.destroy();
   };
-
-  return (
-    <div>
-      <button onClick={onEnd}>End</button>
-    </div>
-  );
-}
+}, [sdk]);
 ```
 
-## 3) Vue 3 用法
+---
 
-```javascript
-import { onMounted, onBeforeUnmount } from "vue";
+## 5. 上传 + 生成 + 运行 对齐要求
 
-export default {
-  setup() {
-    const sdk = window.NianxieInteractionSDK.createNianxieInteractionSDK();
-    let offStart = null;
-    let offInit = null;
+要支持“可上传 + 可生成 + 可运行模板”，需同时满足：
 
-    onMounted(() => {
-      offInit = sdk.onInit(async (payload) => {
-        console.log("OnMiniInit", payload);
-        await sdk.sendReady({ extras: { from: "vue-init" } });
-      });
-      offStart = sdk.onStart((payload) => {
-        console.log("OnMiniStart", payload);
-        // 开始互动
-      });
-    });
+- mini 本身可在开发者平台试运行通过
+- 模板能消费来自生成链路的 craft JSON（即 `aigenAfterJson` 注入后的 craft）
+- App 侧握手日志应能看到完整阶段：
+  - `initSent`
+  - `readyReceived`
+  - `startSent`
+  - `endReceived`
 
-    onBeforeUnmount(() => {
-      if (offInit) offInit();
-      if (offStart) offStart();
-      sdk.destroy();
-    });
+建议在模板中增加可观测日志（屏幕可见或 debug 面板）：
 
-    const onEnd = async () => {
-      await sdk.sendEnd({ extras: { reason: "user-finish" } });
-    };
+- 是否收到 init
+- craft 是否解析成功
+- ready 是否发送成功
+- 是否收到 start
+- end 是否发送成功
 
-    return { onEnd };
-  },
-};
-```
+---
 
-## 扩展能力（未来接口）
+## 6. 验收清单（提交前必须自检）
 
-未来 Flutter 新增 handler（相册/用户数据）时，SDK 无需改内核：
+- 能从 `payload.extras.craft` 读取并运行外部 JSON
+- 完整时序：`init -> ready -> start -> end`
+- `9:16` 比例在容器内稳定
+- build 产物可直接交付运行，不依赖远端 JS
+- 至少存在一个可达结束节点，不会无限循环无出口
+- 解析失败有可见反馈
 
-```javascript
-const sdk = NianxieInteractionSDK.createNianxieInteractionSDK();
+---
 
-sdk.registerRequests({
-  pickImage: "NianxiePickImage",
-  getUserProfile: "NianxieGetUserProfile",
-});
+## 7. 常见问题排查
 
-const image = await sdk.request("pickImage", {
-  extras: { maxCount: 1, mediaType: "image" },
-});
+### Q1: App 里 ready 超时，但平台能跑
 
-const profile = await sdk.request("getUserProfile");
-```
+优先检查：
 
-> `request/sendReady/sendEnd` 会自动带上 SDK 内部维护的 `sessionId/itemId/title`。
+- 是否在 `onInit` 里确实调用了 `sendReady`
+- 是否只在某些异步路径调用（导致有分支漏发）
+- payload 的 `sessionId` 是否被改写（会被宿主判为 mismatch）
 
-## API 一览
+### Q2: craft 为空
+
+- 先看 `payload.extras.craft` 是否存在
+- 若模板历史实现依赖 `payload.craft`，补兼容兜底读取
+- 若两者都空，需检查上游注入流程（非模板代码问题）
+
+### Q3: 收到 start 后画面没进入互动
+
+- 检查 `onStart` 回调是否已注册
+- 检查是否被局部状态/防重逻辑提前 return
+
+---
+
+## 8. SDK API 速查
 
 - `createNianxieInteractionSDK(options)`
-- `sdk.getVersion()`
-- `sdk.isBridgeAvailable()`
-- `sdk.waitForBridge({ timeoutMs, intervalMs })`
-- `sdk.waitForContext({ timeoutMs, intervalMs })`
-- `sdk.getContext()`
-- `sdk.buildPayload(eventId, params)`
+- `sdk.onInit(callback)`
+- `sdk.onStart(callback)`
 - `sdk.sendReady({ extras }, { timeoutMs })`
 - `sdk.sendEnd({ extras }, { timeoutMs })`
 - `sdk.request(name, { extras }, { timeoutMs })`
-- `sdk.registerRequest(name, handlerName)`
-- `sdk.registerRequests(map)`
-- `sdk.getRegisteredRequests()`
-- `sdk.onInit(callback)`
-- `sdk.onStart(callback)` / `sdk.mount({ onInit, onStart })`
+- `sdk.waitForBridge(...)`
+- `sdk.waitForContext(...)`
 - `sdk.destroy()`
 
-## 安全与稳健性
-
-- handler 名合法性校验
-- payload 深度清洗（过滤危险键）
-- 调用超时保护
-- bridge 可用性检查
-- 上下文缺失时拒绝发送（防止脏数据）
+类型定义见：`websdk/index.d.ts`
