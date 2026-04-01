@@ -5,8 +5,7 @@
   "main": "nianxie-interaction-sdk.js",
   "types": "index.d.ts",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nianxie/nianxie_developer_platform.git"
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   }
 }
