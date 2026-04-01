@@ -114,8 +114,11 @@ npm install @nianxie/nianxie-interaction-sdk@0.1.0 --registry=https://npm.pkg.gi
 ### 3.2 打包交付
 
 - `npm run build` 后产物可直接交付
-- 不依赖远端 CDN JS 才能运行（离线/内网也可启动）
-- 推荐单文件策略（如 `vite-plugin-singlefile`），优先 `dist/index.html`
+- 运行核心 JS 不依赖远端 CDN 才能运行（离线/内网也可启动）
+- 必须通过打包插件将运行所需 JS 合并到交付产物（推荐 `vite-plugin-singlefile`）
+- 交付入口必须为 `dist/index.html`
+- 代码入口与本地资源引用优先使用相对路径（如 `./assets/...`、`./nianxie-interaction-sdk.js`）
+- 允许使用线上静态资源（如 OSS 图片/音频），但需保证资源稳定可访问并有失败降级
 
 ---
 
@@ -186,7 +189,7 @@ useEffect(() => {
 需满足：
 
 - 作品数据来自本地固定 JSON（随包构建）
-- 所有资源使用包内相对路径，不依赖外网地址
+- 核心运行资源可本地打包；允许业务静态资源走线上地址（如 OSS）
 - 在宿主环境完成 `init -> ready -> start -> end`
 - 能稳定结束并发出 `end`
 
@@ -217,7 +220,9 @@ useEffect(() => {
 - 发布前在开发者平台完成测试（用户侧正式验收入口）
 - 完整时序：`init -> ready -> start -> end`
 - `9:16` 比例在容器内稳定
-- build 产物可直接交付运行，不依赖远端 JS
+- build 产物可直接交付运行，核心 JS 不依赖远端脚本
+- 已使用打包插件合并 JS，交付入口为 `dist/index.html`
+- 核心入口与本地资源采用相对路径；若使用线上静态资源需验证可用性与降级策略
 - 至少存在一个可达结束节点，不会无限循环无出口
 - 解析失败有可见反馈
 
