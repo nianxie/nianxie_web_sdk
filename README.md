@@ -8,8 +8,36 @@
 目标是保证产物可以：
 
 1. 在开发者平台上传并通过试运行
-2. 在 App 内完成一次完整握手与运行：`init -> ready -> start -> end`
-3. 作为“可上传 + 可生成 + 可运行”的模板被复用
+2. 在宿主侧完成一次完整握手与运行：`init -> ready -> start -> end`
+3. 作为“可上传 + 可配置 + 可运行”的模板被复用
+
+发布前测试口径：
+
+- 用户侧发布前仅通过开发者平台进行测试与验收。
+- 当作品遵守本规范并在开发者平台运行通过时，Flutter 侧应可直接使用。
+
+---
+
+## 0. 产物类型（先选模式）
+
+本平台支持两种交付模式，二选一或同时支持：
+
+### A) 直接作品模式（Playable Work）
+
+- 作品使用**本地固定 JSON**（随包发布）
+- 作品使用**本地相对路径资源**（如 `./assets/...`）
+- 运行时可以不解析 `payload.extras.craft`
+- 仍必须遵守握手时序：`init -> ready -> start -> end`
+
+适用：你只需要“可上传 + 可运行”的单个作品，不需要 AIGC 生成注入。
+
+### B) craft 驱动模板模式（Configurable Template）
+
+- 作品必须消费运行时传入的 `payload.extras.craft`
+- 通过外部 JSON 驱动流程（可做 schema 校验）
+- 目标是“可上传 + 可配置 + 可运行”
+
+适用：你希望作品可被外部 craft 数据驱动，不把内容写死在包内。
 
 ---
 
@@ -32,9 +60,10 @@
 
 ### 1.3 craft 输入规则（强约束）
 
-- 模板运行数据优先从 `payload.extras.craft` 读取。
+- craft 驱动模板模式：运行数据优先从 `payload.extras.craft` 读取。
 - `payload.craft` 仅可作为兼容兜底，不应作为主通道。
-- 读取后必须进行 schema 校验，校验失败要可见反馈（不仅 console）。
+- 直接作品模式：允许忽略 craft，直接加载本地固定 JSON。
+- 无论哪种模式，数据加载失败都要可见反馈（不仅 console）。
 
 ---
 
@@ -48,8 +77,9 @@
 
 最低要求：
 
-- 运行内容由外部 craft 驱动，不允许把故事/关卡完全写死
-- 具备 schema（建议 Zod + JSON Schema 导出）
+- 直接作品模式：允许使用本地固定 JSON
+- craft 驱动模板模式：运行内容由外部 craft 驱动，不允许把故事/关卡完全写死
+- craft 驱动模板模式建议具备 schema（Zod + JSON Schema 导出）
 - 有明确开始和结束条件，且开始路径可达至少一个结束节点
 
 ---
@@ -83,13 +113,12 @@
 
   const offInit = sdk.onInit(async (payload) => {
     const craft = payload?.extras?.craft ?? payload?.craft;
-    if (!craft) {
-      // 需要可见错误提示
-      document.body.innerText = "craft 缺失，无法运行";
-      return;
-    }
+    // 模式 1：craft 驱动模板（有 craft）
+    // 模式 2：直接作品（无 craft，改读本地 JSON）
+    // const data = craft ?? localJson;
+    // if (!data) { document.body.innerText = "数据缺失，无法运行"; return; }
 
-    // 1) 校验 craft  2) 加载资源  3) 准备完成后发送 ready
+    // 1) 解析/校验数据 2) 加载资源 3) 准备完成后发送 ready
     await sdk.sendReady({ extras: { stage: "assets-loaded" } });
   });
 
@@ -130,13 +159,24 @@ useEffect(() => {
 
 ---
 
-## 5. 上传 + 生成 + 运行 对齐要求
+## 5. 上传与运行对齐要求
 
-要支持“可上传 + 可生成 + 可运行模板”，需同时满足：
+### 5.1 直接作品模式（可上传 + 可运行）
+
+需满足：
+
+- 作品数据来自本地固定 JSON（随包构建）
+- 所有资源使用包内相对路径，不依赖外网地址
+- 在宿主环境完成 `init -> ready -> start -> end`
+- 能稳定结束并发出 `end`
+
+### 5.2 craft 驱动模板模式（可上传 + 可配置 + 可运行）
+
+需满足：
 
 - mini 本身可在开发者平台试运行通过
-- 模板能消费来自生成链路的 craft JSON（即 `aigenAfterJson` 注入后的 craft）
-- App 侧握手日志应能看到完整阶段：
+- 模板能消费外部传入的 craft JSON（`payload.extras.craft`）
+- 宿主握手日志应能看到完整阶段：
   - `initSent`
   - `readyReceived`
   - `startSent`
@@ -154,12 +194,17 @@ useEffect(() => {
 
 ## 6. 验收清单（提交前必须自检）
 
-- 能从 `payload.extras.craft` 读取并运行外部 JSON
+- 发布前在开发者平台完成测试（用户侧正式验收入口）
 - 完整时序：`init -> ready -> start -> end`
 - `9:16` 比例在容器内稳定
 - build 产物可直接交付运行，不依赖远端 JS
 - 至少存在一个可达结束节点，不会无限循环无出口
 - 解析失败有可见反馈
+
+按模式补充：
+
+- 直接作品模式：本地固定 JSON + 本地相对资源可直接运行
+- craft 驱动模板模式：能从 `payload.extras.craft` 读取并运行外部 JSON
 
 ---
 
@@ -175,9 +220,10 @@ useEffect(() => {
 
 ### Q2: craft 为空
 
+- 如果你是直接作品模式：这是预期，可直接走本地 JSON
 - 先看 `payload.extras.craft` 是否存在
 - 若模板历史实现依赖 `payload.craft`，补兼容兜底读取
-- 若两者都空，需检查上游注入流程（非模板代码问题）
+- 若你是 craft 驱动模板模式且两者都空，需检查宿主传参与模板读取逻辑
 
 ### Q3: 收到 start 后画面没进入互动
 
