@@ -10,6 +10,24 @@ export interface NianxieSDKOptions {
   defaultTimeoutMs?: number;
   strictHandlerCheck?: boolean;
   requestMap?: Record<string, string>;
+  diagnostics?: DiagnosticsOptions;
+}
+
+export interface DiagnosticsOptions {
+  enabled?: boolean;
+  readyTimeoutMs?: number;
+  endTimeoutMs?: number;
+  onEvent?: (event: DiagnosticEvent) => void;
+}
+
+export interface DiagnosticEvent {
+  ts: number;
+  level: 'info' | 'error';
+  phase?: 'init' | 'ready' | 'start' | 'end';
+  eventId?: string;
+  errorCode?: string;
+  suggestion?: string;
+  detail?: string;
 }
 
 export interface MiniContext {
@@ -81,14 +99,29 @@ export declare class NianxieInteractionClient {
   onStart(callback: (payload: ProtocolPayload) => void): () => void;
   /** Shorthand for registering onInit/onStart callbacks together. */
   mount(config: MountConfig): () => void;
+  getDiagnosticsEvents(): DiagnosticEvent[];
+  getDiagnosticsState(): {
+    enabled: boolean;
+    initReceived: boolean;
+    readySent: boolean;
+    startReceived: boolean;
+    endSent: boolean;
+  };
   destroy(): void;
 }
 
 export declare function createNianxieInteractionSDK(options?: NianxieSDKOptions): NianxieInteractionClient;
 export declare const version: string;
+export declare const diagnosticErrorCodes: {
+  INIT_READY_TIMEOUT: string;
+  START_END_TIMEOUT: string;
+  READY_BEFORE_INIT: string;
+  END_BEFORE_START: string;
+};
 
 declare const NianxieInteractionSDK: {
   version: string;
+  diagnosticErrorCodes: typeof diagnosticErrorCodes;
   NianxieInteractionClient: typeof NianxieInteractionClient;
   createNianxieInteractionSDK: typeof createNianxieInteractionSDK;
 };

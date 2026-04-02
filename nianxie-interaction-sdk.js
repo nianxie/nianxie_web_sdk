@@ -36,6 +36,19 @@
     startGlobalFunctionName: 'OnMiniStart',
     defaultTimeoutMs: 10000,
     strictHandlerCheck: true,
+    diagnostics: {
+      enabled: false,
+      readyTimeoutMs: 8000,
+      endTimeoutMs: 120000,
+      onEvent: null,
+    },
+  };
+
+  var DIAGNOSTIC_ERROR = {
+    INIT_READY_TIMEOUT: 'NX_DIAG_INIT_READY_TIMEOUT',
+    START_END_TIMEOUT: 'NX_DIAG_START_END_TIMEOUT',
+    READY_BEFORE_INIT: 'NX_DIAG_READY_BEFORE_INIT',
+    END_BEFORE_START: 'NX_DIAG_END_BEFORE_START',
   };
 
   function isObject(value) {
@@ -58,6 +71,13 @@
 
   function hasNonEmptyText(value) {
     return value != null && String(value).trim() !== '';
+  }
+
+  function safeCall(fn, payload) {
+    if (typeof fn !== 'function') return;
+    try {
+      fn(payload);
+    } catch (_) {}
   }
 
   function isValidHandlerName(name) {
@@ -115,8 +135,99 @@
     this._cleanupTasks = [];
     this._requestMap = merge(DEFAULT_REQUEST_MAP, this.options.requestMap || {});
     this._context = { sessionId: '', itemId: '', title: '' };
+    this._diagnostics = this._createDiagnosticsStore();
     this._hydrateContextFromWindow();
   }
+
+  NianxieInteractionClient.prototype._createDiagnosticsStore = function _createDiagnosticsStore() {
+    var cfg = this.options.diagnostics || {};
+    return {
+      enabled: !!cfg.enabled,
+      readyTimeoutMs: cfg.readyTimeoutMs > 0 ? cfg.readyTimeoutMs : 8000,
+      endTimeoutMs: cfg.endTimeoutMs > 0 ? cfg.endTimeoutMs : 120000,
+      onEvent: typeof cfg.onEvent === 'function' ? cfg.onEvent : null,
+      events: [],
+      timers: {
+        readyTimer: null,
+        endTimer: null,
+      },
+      state: {
+        initReceived: false,
+        readySent: false,
+        startReceived: false,
+        endSent: false,
+      },
+    };
+  };
+
+  NianxieInteractionClient.prototype._diagnosticEvent = function _diagnosticEvent(event) {
+    var store = this._diagnostics;
+    if (!store || !store.enabled) return;
+    var payload = merge(
+      {
+        ts: Date.now(),
+        level: 'info',
+      },
+      event || {}
+    );
+    store.events.push(payload);
+    safeCall(store.onEvent, payload);
+  };
+
+  NianxieInteractionClient.prototype._diagnosticError = function _diagnosticError(errorCode, phase, suggestion, detail) {
+    this._diagnosticEvent({
+      level: 'error',
+      errorCode: errorCode,
+      phase: phase,
+      suggestion: suggestion,
+      detail: detail || '',
+    });
+  };
+
+  NianxieInteractionClient.prototype._startDiagnosticTimer = function _startDiagnosticTimer(key, timeoutMs, onTimeout) {
+    var store = this._diagnostics;
+    if (!store || !store.enabled) return;
+    if (store.timers[key]) clearTimeout(store.timers[key]);
+    store.timers[key] = setTimeout(function () {
+      store.timers[key] = null;
+      onTimeout();
+    }, timeoutMs);
+  };
+
+  NianxieInteractionClient.prototype._clearDiagnosticTimer = function _clearDiagnosticTimer(key) {
+    var store = this._diagnostics;
+    if (!store || !store.enabled) return;
+    if (store.timers[key]) {
+      clearTimeout(store.timers[key]);
+      store.timers[key] = null;
+    }
+  };
+
+  NianxieInteractionClient.prototype.getDiagnosticsEvents = function getDiagnosticsEvents() {
+    var store = this._diagnostics;
+    if (!store) return [];
+    return store.events.slice();
+  };
+
+  NianxieInteractionClient.prototype.getDiagnosticsState = function getDiagnosticsState() {
+    var store = this._diagnostics;
+    if (!store) {
+      return {
+        enabled: false,
+        initReceived: false,
+        readySent: false,
+        startReceived: false,
+        endSent: false,
+      };
+    }
+    return {
+      enabled: store.enabled,
+      initReceived: !!store.state.initReceived,
+      readySent: !!store.state.readySent,
+      startReceived: !!store.state.startReceived,
+      endSent: !!store.state.endSent,
+    };
+  };
 
   NianxieInteractionClient.prototype.getVersion = function getVersion() {
     return VERSION;
@@ -294,22 +405,56 @@
 
   NianxieInteractionClient.prototype.sendReady = function sendReady(params, options) {
     var payload;
+    var store = this._diagnostics;
+    if (store && store.enabled && !store.state.initReceived) {
+      this._diagnosticError(
+        DIAGNOSTIC_ERROR.READY_BEFORE_INIT,
+        'ready',
+        '请先等待 OnMiniInit 回调后再发送 ready',
+        'sendReady called before init callback'
+      );
+    }
     try {
       payload = this.buildPayload('interaction_ready', params || {});
     } catch (e) {
       return Promise.reject(e);
     }
-    return this._callHandler(this._requestMap.ready, payload, options || {});
+    var self = this;
+    return this._callHandler(this._requestMap.ready, payload, options || {}).then(function (res) {
+      if (store && store.enabled) {
+        store.state.readySent = true;
+        self._clearDiagnosticTimer('readyTimer');
+        self._diagnosticEvent({ phase: 'ready', eventId: 'interaction_ready', detail: 'ready sent' });
+      }
+      return res;
+    });
   };
 
   NianxieInteractionClient.prototype.sendEnd = function sendEnd(params, options) {
     var payload;
+    var store = this._diagnostics;
+    if (store && store.enabled && !store.state.startReceived) {
+      this._diagnosticError(
+        DIAGNOSTIC_ERROR.END_BEFORE_START,
+        'end',
+        '请先等待 OnMiniStart 回调后再发送 end',
+        'sendEnd called before start callback'
+      );
+    }
     try {
       payload = this.buildPayload('interaction_end', params || {});
     } catch (e) {
       return Promise.reject(e);
     }
-    return this._callHandler(this._requestMap.end, payload, options || {});
+    var self = this;
+    return this._callHandler(this._requestMap.end, payload, options || {}).then(function (res) {
+      if (store && store.enabled) {
+        store.state.endSent = true;
+        self._clearDiagnosticTimer('endTimer');
+        self._diagnosticEvent({ phase: 'end', eventId: 'interaction_end', detail: 'end sent' });
+      }
+      return res;
+    });
   };
 
   NianxieInteractionClient.prototype.onInit = function onInit(callback) {
@@ -335,6 +480,18 @@
     window[fnName] = function (payload) {
       var safePayload = deepSanitize(payload, 12);
       self._setContext(safePayload || {});
+      if (self._diagnostics && self._diagnostics.enabled) {
+        self._diagnostics.state.initReceived = true;
+        self._diagnosticEvent({ phase: 'init', eventId: 'interaction_init', detail: 'init received' });
+        self._startDiagnosticTimer('readyTimer', self._diagnostics.readyTimeoutMs, function () {
+          self._diagnosticError(
+            DIAGNOSTIC_ERROR.INIT_READY_TIMEOUT,
+            'ready',
+            '请在 OnMiniInit 完成资源准备后调用 sdk.sendReady()',
+            'ready not sent after init'
+          );
+        });
+      }
       callback(safePayload);
       if (typeof previousFn === 'function') {
         try {
@@ -381,6 +538,18 @@
     window[fnName] = function (payload) {
       var safePayload = deepSanitize(payload, 12);
       self._setContext(safePayload || {});
+      if (self._diagnostics && self._diagnostics.enabled) {
+        self._diagnostics.state.startReceived = true;
+        self._diagnosticEvent({ phase: 'start', eventId: 'interaction_start', detail: 'start received' });
+        self._startDiagnosticTimer('endTimer', self._diagnostics.endTimeoutMs, function () {
+          self._diagnosticError(
+            DIAGNOSTIC_ERROR.START_END_TIMEOUT,
+            'end',
+            '请在交互结束时调用 sdk.sendEnd() 并确保可达结束路径',
+            'end not sent after start'
+          );
+        });
+      }
       callback(safePayload);
       if (typeof previousFn === 'function') {
         try {
@@ -415,6 +584,8 @@
   };
 
   NianxieInteractionClient.prototype.destroy = function destroy() {
+    this._clearDiagnosticTimer('readyTimer');
+    this._clearDiagnosticTimer('endTimer');
     while (this._cleanupTasks.length > 0) {
       var task = this._cleanupTasks.pop();
       try {
@@ -429,6 +600,7 @@
 
   return {
     version: VERSION,
+    diagnosticErrorCodes: merge({}, DIAGNOSTIC_ERROR),
     NianxieInteractionClient: NianxieInteractionClient,
     createNianxieInteractionSDK: createNianxieInteractionSDK,
   };

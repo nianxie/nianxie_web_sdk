@@ -1,9 +1,27 @@
 {
   "name": "@nianxie/nianxie-interaction-sdk",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Nianxie interaction signal SDK for Flutter InAppWebView.",
   "main": "nianxie-interaction-sdk.js",
   "types": "index.d.ts",
+  "bin": {
+    "nianxie-gate": "tools/nianxie-gate.js"
+  },
+  "files": [
+    "nianxie-interaction-sdk.js",
+    "index.d.ts",
+    "README.md",
+    "error-codes.json",
+    "tools"
+  ],
+  "scripts": {
+    "nx:package": "node ./tools/nx-package.js",
+    "nx:verify:runtime": "node ./tools/nx-verify-runtime.js",
+    "nx:preflight": "node ./tools/nx-preflight.js",
+    "nx:submit:prepare": "node ./tools/nx-submit-prepare.js",
+    "nx:simulate:host": "node ./tools/local-host-simulator.js",
+    "nx:gate:help": "node ./tools/nianxie-gate.js help"
+  },
   "license": "MIT",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
