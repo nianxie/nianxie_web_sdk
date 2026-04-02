@@ -9,6 +9,11 @@ This folder is a copy-ready Unity integration starter for Nianxie WebSDK.
 - `Assets/WebGLTemplates/NianxieTemplate/nianxie-web-bridge.js`
 - `Assets/Plugins/WebGL/nianxie_bridge.jslib`
 - `Assets/Scripts/NianxieBridge.cs`
+- `tools/nianxie-gate.js`
+- `tools/nx-verify-runtime.js`
+- `tools/local-host-simulator.js`
+- `tools/nx-common.js`
+- `error-codes.json`
 
 ## How to use
 
@@ -18,6 +23,27 @@ This folder is a copy-ready Unity integration starter for Nianxie WebSDK.
    - Choose `NianxieTemplate`.
 3. Create a GameObject named `NianxieBridge` and attach `NianxieBridge.cs`.
 4. Build WebGL and test in host environment.
+
+## Local runtime checks (recommended)
+
+Run in your exported web project root (must contain `dist/`):
+
+```bash
+node tools/nx-verify-runtime.js
+node tools/local-host-simulator.js
+```
+
+or via gate entry:
+
+```bash
+node tools/nianxie-gate.js verify-runtime
+node tools/nianxie-gate.js simulate-host
+```
+
+Reports:
+
+- `reports/runtime-verify.json`
+- `reports/local-host-simulator.json`
 
 ## Runtime flow
 
