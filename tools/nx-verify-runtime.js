@@ -19,6 +19,8 @@ const DEV_RUNTIME_REGEX = /@vite\/client|import\.meta\.hot|localhost|127\.0\.0\.
 const SDK_SIGNAL_REGEX = /nianxie-interaction-sdk\.js|NianxieInteractionSDK|createNianxieInteractionSDK/;
 const MEDIA_REF_REGEX = /["'`]([^"'`]+\.(?:png|jpg|jpeg|gif|webp|svg|mp3|wav|ogg|m4a|aac|flac|mp4|webm))(?:\?[^"'`]*)?["'`]/gi;
 const REMOTE_ABSOLUTE_REGEX = /^[a-z][a-z0-9+\-.]*:\/\//i;
+const INDEX_SCRIPT_REGEX = /<script[^>]+src=['"]([^'"]+)['"][^>]*>/gi;
+const CSS_URL_REGEX = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
 
 function resolveResourceRef(rawRef, baseDir = '') {
   const trimmed = String(rawRef || '').trim();
@@ -92,9 +94,21 @@ function checkRuntime() {
     }
   }
 
-  const jsFiles = getDistFiles().filter((item) => item.rel.endsWith('.js'));
+  const referencedScriptPaths = new Set();
+  for (const match of indexText.matchAll(INDEX_SCRIPT_REGEX)) {
+    const rawRef = match[1] || '';
+    const parsed = resolveResourceRef(rawRef, '');
+    if (parsed.skip || parsed.isAbsolute || !parsed.resolved) continue;
+    if (!distFileSet.has(parsed.resolved)) continue;
+    if (!/\.m?js$/i.test(parsed.resolved)) continue;
+    referencedScriptPaths.add(parsed.resolved);
+  }
+
   const runtimeScriptSources = [
-    ...jsFiles.map((item) => ({ source: fs.readFileSync(item.abs, 'utf8'), path: item.rel })),
+    ...Array.from(referencedScriptPaths).map((relPath) => ({
+      source: fs.readFileSync(path.join(DIST_DIR, relPath), 'utf8'),
+      path: relPath,
+    })),
     ...inlineScripts.map((source, index) => ({ source, path: `index.html:inline-script#${index + 1}` })),
   ];
 
@@ -175,6 +189,28 @@ function checkRuntime() {
         missingRef
       )
     );
+  }
+
+  // CSS absolute-path guard for OSS/static hosting compatibility.
+  const cssFiles = getDistFiles().filter((item) => item.rel.endsWith('.css'));
+  for (const cssFile of cssFiles) {
+    const cssText = fs.readFileSync(cssFile.abs, 'utf8');
+    for (const match of cssText.matchAll(CSS_URL_REGEX)) {
+      const rawRef = String(match[2] || '').trim();
+      if (!rawRef || REMOTE_ABSOLUTE_REGEX.test(rawRef) || rawRef.startsWith('data:') || rawRef.startsWith('blob:')) continue;
+      if (rawRef.startsWith('/')) {
+        issues.push(
+          makeIssue(
+            'NX_BLOCK_ABSOLUTE_PATH_IN_INDEX',
+            'runtime',
+            'blocking',
+            '检测到 CSS 绝对路径资源引用，上传 OSS 后可能无法命中',
+            resolveSuggestion(dict, 'NX_BLOCK_ABSOLUTE_PATH_IN_INDEX', '改为相对路径引用'),
+            `${cssFile.rel}: ${rawRef}`
+          )
+        );
+      }
+    }
   }
 
   const missingHandlers = Object.entries(protocolFingerprint)
