@@ -57,6 +57,12 @@
 3. `npm run nx:submit:prepare`
    - 仅在 preflight 通过后输出“最终可上传包路径 + 摘要”
 
+上传交互模式（当前默认）：
+
+- 本地浏览器负责：解压、校验、预览、产包（`dist` / `dist.zip`）。
+- 浏览器直连服务端 API，并直传对象存储（如 OSS）。
+- 不经过开发者本机做代理中转；后续如需本机代理可再作为可选通道引入。
+
 如果是 AI 自动修复流程，AI 必须遵守同一顺序：先 package，再 verify，再 submit prepare；不得跳过阻断校验直接提交。
 
 ### 失败分级（统一口径）
@@ -197,6 +203,7 @@ singlefile 模式建议（强烈推荐）：
 - SDK 优先在业务代码中通过 npm import（例如 `import NianxieInteractionSDK from "@nianxie/nianxie-interaction-sdk"`）。
 - 不建议在 `index.html` 写 `./node_modules/...` 脚本路径；构建产物中该路径通常无效。
 - 若必须保留独立 SDK 文件，请通过 `public/nianxie-interaction-sdk.js` 输出并以 `./nianxie-interaction-sdk.js` 相对路径引用。
+- 绝对路径（如 `/assets/...`、`url(/assets/...)`）视为阻断项；上传 OSS 场景必须改为相对路径。
 
 ---
 
@@ -366,6 +373,7 @@ CLI 口径说明：
 - 协议闭环识别目标不变：`onInit/onStart/sendReady/sendEnd`。
 - 资源校验同样覆盖 singlefile：会校验脚本中的媒体引用是否能命中 `dist`，并阻断绝对路径资源引用（如 `/assets/...`）。
 - 开发者平台最终以运行时闭环表现为准，不强制要求 `index.html` 必须显式存在 `nianxie-interaction-sdk.js` 标签。
+- 资源策略：未被入口引用的冗余资源默认不阻断；仅“被引用但路径错误/不可达”阻断。
 
 ---
 
