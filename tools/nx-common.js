@@ -7,6 +7,22 @@ const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const REPORT_DIR = path.join(ROOT_DIR, 'reports');
 const DIST_ZIP_PATH = path.join(ROOT_DIR, 'dist.zip');
 const ERROR_CODE_PATH = path.join(__dirname, '..', 'error-codes.json');
+const OPTIONAL_JSON_SPECS = [
+  {
+    name: 'schema.json',
+    candidates: [
+      path.join(ROOT_DIR, 'schema.json'),
+      path.join(ROOT_DIR, 'schema', 'schema.json'),
+    ],
+  },
+  {
+    name: 'config.json',
+    candidates: [
+      path.join(ROOT_DIR, 'config.json'),
+      path.join(ROOT_DIR, 'config', 'config.json'),
+    ],
+  },
+];
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -114,6 +130,19 @@ function loadErrorDictionary() {
   return readJsonSafe(ERROR_CODE_PATH, {});
 }
 
+function collectOptionalJsonSources() {
+  return OPTIONAL_JSON_SPECS.map((spec) => {
+    const sourcePath = spec.candidates.find((candidate) => fs.existsSync(candidate)) || null;
+    return {
+      name: spec.name,
+      candidates: spec.candidates.slice(),
+      sourcePath,
+      targetInZip: `dist/${spec.name}`,
+      shouldIncludeInZip: Boolean(sourcePath),
+    };
+  });
+}
+
 module.exports = {
   ROOT_DIR,
   DIST_DIR,
@@ -132,4 +161,5 @@ module.exports = {
   computeSha256,
   makeIssue,
   loadErrorDictionary,
+  collectOptionalJsonSources,
 };

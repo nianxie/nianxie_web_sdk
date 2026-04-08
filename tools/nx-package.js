@@ -15,6 +15,7 @@ const {
   normalizeRefPath,
   makeIssue,
   loadErrorDictionary,
+  collectOptionalJsonSources,
 } = require('./nx-common');
 
 function runCommand(command, args) {
@@ -69,11 +70,57 @@ function packageWarnings() {
 }
 
 function zipDist() {
-  if (fs.existsSync(DIST_ZIP_PATH)) fs.rmSync(DIST_ZIP_PATH);
-  const zipResult = spawnSync('zip', ['-rq', DIST_ZIP_PATH, 'dist'], { cwd: ROOT_DIR, stdio: 'pipe' });
-  if (zipResult.status !== 0) {
-    throw new Error('zip 命令执行失败，请确认系统已安装 zip');
+  const optionalSources = collectOptionalJsonSources();
+  const injectedFiles = [];
+  const backups = [];
+
+  const backupTag = `.nx-package-backup-${process.pid}-${Date.now()}`;
+
+  for (const sourceInfo of optionalSources) {
+    const sourcePath = sourceInfo.sourcePath;
+    if (!sourcePath) continue;
+
+    const targetPath = path.join(DIST_DIR, sourceInfo.name);
+    if (path.resolve(sourcePath) === path.resolve(targetPath)) {
+      injectedFiles.push({ name: sourceInfo.name, source: sourcePath, target: targetPath, copied: false });
+      continue;
+    }
+
+    if (fs.existsSync(targetPath)) {
+      const backupPath = `${targetPath}${backupTag}`;
+      fs.renameSync(targetPath, backupPath);
+      backups.push({ targetPath, backupPath });
+    }
+
+    fs.copyFileSync(sourcePath, targetPath);
+    injectedFiles.push({ name: sourceInfo.name, source: sourcePath, target: targetPath, copied: true });
   }
+
+  if (fs.existsSync(DIST_ZIP_PATH)) fs.rmSync(DIST_ZIP_PATH);
+  try {
+    const zipResult = spawnSync('zip', ['-rq', DIST_ZIP_PATH, 'dist'], { cwd: ROOT_DIR, stdio: 'pipe' });
+    if (zipResult.status !== 0) {
+      throw new Error('zip 命令执行失败，请确认系统已安装 zip');
+    }
+  } finally {
+    for (const injected of injectedFiles) {
+      if (!injected.copied) continue;
+      if (fs.existsSync(injected.target)) {
+        fs.rmSync(injected.target);
+      }
+    }
+    for (const item of backups) {
+      if (fs.existsSync(item.backupPath)) {
+        fs.renameSync(item.backupPath, item.targetPath);
+      }
+    }
+  }
+
+  return injectedFiles.map((item) => ({
+    name: item.name,
+    source: item.source,
+    targetInZip: `dist/${item.name}`,
+  }));
 }
 
 function main() {
@@ -95,7 +142,7 @@ function main() {
   if (!fs.existsSync(DIST_DIR)) {
     throw new Error('构建完成后未发现 dist/ 目录');
   }
-  zipDist();
+  const injectedJsonFiles = zipDist();
 
   ensureDir(REPORT_DIR);
   const warnings = packageWarnings();
@@ -110,9 +157,15 @@ function main() {
       distPath: DIST_DIR,
       zipPath: DIST_ZIP_PATH,
       fileCount: distFiles.length,
+      injectedJsonFiles,
     },
   });
 
+  if (injectedJsonFiles.length > 0) {
+    process.stdout.write(
+      `[nx:package] injected optional json => ${injectedJsonFiles.map((item) => item.name).join(', ')}\n`
+    );
+  }
   process.stdout.write(`[nx:package] completed with ${warnings.length} warning(s)\n`);
   process.stdout.write(`[nx:package] report => ${reportPath}\n`);
 }

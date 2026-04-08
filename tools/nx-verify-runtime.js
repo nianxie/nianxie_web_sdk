@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const {
+  ROOT_DIR,
   DIST_DIR,
   DIST_ZIP_PATH,
   REPORT_DIR,
@@ -13,6 +15,7 @@ const {
   normalizeRefPath,
   makeIssue,
   loadErrorDictionary,
+  collectOptionalJsonSources,
 } = require('./nx-common');
 
 const DEV_RUNTIME_REGEX = /@vite\/client|import\.meta\.hot|localhost|127\.0\.0\.1|0\.0\.0\.0/i;
@@ -39,6 +42,29 @@ function resolveResourceRef(rawRef, baseDir = '') {
 function resolveSuggestion(dict, code, fallback) {
   const meta = dict[code] || {};
   return meta.suggestion || fallback;
+}
+
+function listZipEntries() {
+  if (!fs.existsSync(DIST_ZIP_PATH)) return [];
+  let result = spawnSync('unzip', ['-Z1', DIST_ZIP_PATH], {
+    cwd: ROOT_DIR,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    result = spawnSync('zipinfo', ['-1', DIST_ZIP_PATH], {
+      cwd: ROOT_DIR,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    });
+  }
+  if (result.status !== 0) {
+    throw new Error(`无法读取 dist.zip 内容：${result.stderr || result.stdout || 'unknown error'}`);
+  }
+  return String(result.stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function checkRuntime() {
@@ -240,6 +266,24 @@ function checkRuntime() {
         DIST_ZIP_PATH
       )
     );
+  } else {
+    const zipEntries = new Set(listZipEntries());
+    const optionalJsonSources = collectOptionalJsonSources();
+    for (const item of optionalJsonSources) {
+      if (!item.shouldIncludeInZip) continue;
+      if (!zipEntries.has(item.targetInZip)) {
+        issues.push(
+          makeIssue(
+            'NX_BLOCK_ENTRY_ASSET_MISSING',
+            'runtime',
+            'blocking',
+            `检测到 ${item.name} 源文件存在，但 dist.zip 缺少同级注入文件`,
+            `请确保执行 nx:package 时将 ${item.name} 注入到 dist/ 根目录`,
+            item.targetInZip
+          )
+        );
+      }
+    }
   }
 
   return issues;
