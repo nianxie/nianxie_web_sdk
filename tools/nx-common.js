@@ -11,15 +11,15 @@ const OPTIONAL_JSON_SPECS = [
   {
     name: 'schema.json',
     candidates: [
-      path.join(ROOT_DIR, 'schema.json'),
       path.join(ROOT_DIR, 'schema', 'schema.json'),
+      path.join(ROOT_DIR, 'schema.json'),
     ],
   },
   {
     name: 'config.json',
     candidates: [
-      path.join(ROOT_DIR, 'config.json'),
       path.join(ROOT_DIR, 'config', 'config.json'),
+      path.join(ROOT_DIR, 'config.json'),
     ],
   },
 ];
