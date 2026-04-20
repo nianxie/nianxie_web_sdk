@@ -13,11 +13,20 @@ public class NianxieBridge : MonoBehaviour
 #endif
 
     [SerializeField] private bool pollPayloadFromJs = true;
+    [SerializeField] private bool autoSendReadyOnInit = false;
+    [SerializeField] private string readyStageTag = "main-menu-visible";
+
+    private bool hasReceivedInit;
+    private bool hasSentReady;
 
     public void OnMiniInit(string payloadJson)
     {
         Debug.Log($"[NianxieBridge] OnMiniInit payload={payloadJson}");
-        SendReady("{\"stage\":\"assets-loaded\"}");
+        hasReceivedInit = true;
+        if (autoSendReadyOnInit)
+        {
+            TrySendReady(readyStageTag);
+        }
     }
 
     public void OnMiniStart(string payloadJson)
@@ -33,11 +42,34 @@ public class NianxieBridge : MonoBehaviour
     public bool SendReady(string extrasJson = "{}")
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
-        return NxSendReady(string.IsNullOrWhiteSpace(extrasJson) ? "{}" : extrasJson) == 1;
+        var ok = NxSendReady(string.IsNullOrWhiteSpace(extrasJson) ? "{}" : extrasJson) == 1;
+        if (ok) hasSentReady = true;
+        return ok;
 #else
         Debug.Log("[NianxieBridge] SendReady ignored outside WebGL runtime");
         return false;
 #endif
+    }
+
+    /// <summary>
+    /// Call this when your home/menu is fully visible and ready for host start.
+    /// </summary>
+    public bool NotifyHomeReady()
+    {
+        return TrySendReady(readyStageTag);
+    }
+
+    private bool TrySendReady(string stageTag)
+    {
+        if (hasSentReady) return true;
+        if (!hasReceivedInit)
+        {
+            Debug.LogWarning("[NianxieBridge] NotifyHomeReady ignored: init payload not received.");
+            return false;
+        }
+
+        var safeStage = string.IsNullOrWhiteSpace(stageTag) ? "main-menu-visible" : stageTag;
+        return SendReady("{\"stage\":\"" + safeStage + "\"}");
     }
 
     public bool SendEnd(string extrasJson = "{}")

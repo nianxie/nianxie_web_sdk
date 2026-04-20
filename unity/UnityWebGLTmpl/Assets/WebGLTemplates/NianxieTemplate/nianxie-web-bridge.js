@@ -10,8 +10,63 @@
   });
 
   var unityInstanceRef = null;
+  var pendingInitPayloads = [];
+  var pendingStartPayloads = [];
+  var hasDeliveredInitToUnity = false;
+  var hasDeliveredStartToUnity = false;
+
+  function log() {
+    try {
+      console.error.apply(console, ["[NxBridge]"].concat([].slice.call(arguments)));
+    } catch (_err) {}
+  }
+
+  function safeStringify(payload) {
+    try {
+      return JSON.stringify(payload || {});
+    } catch (_err) {
+      return "{}";
+    }
+  }
+
+  function deliverPayloadToUnity(methodName, payloadJson) {
+    if (!unityInstanceRef) return false;
+    try {
+      unityInstanceRef.SendMessage("NianxieBridge", methodName, payloadJson);
+      return true;
+    } catch (err) {
+      log("SendMessage failed", methodName, String(err));
+      return false;
+    }
+  }
+
+  function flushBufferedPayloads() {
+    if (!unityInstanceRef) return;
+
+    if (!hasDeliveredInitToUnity && pendingInitPayloads.length > 0) {
+      var initPayload = pendingInitPayloads[pendingInitPayloads.length - 1];
+      if (deliverPayloadToUnity("OnMiniInit", initPayload)) {
+        hasDeliveredInitToUnity = true;
+        pendingInitPayloads = [];
+        window.__nx_init_payload = null;
+        log("OnMiniInit replayed after bindUnityInstance");
+      }
+    }
+
+    if (!hasDeliveredStartToUnity && pendingStartPayloads.length > 0) {
+      var startPayload = pendingStartPayloads[pendingStartPayloads.length - 1];
+      if (deliverPayloadToUnity("OnMiniStart", startPayload)) {
+        hasDeliveredStartToUnity = true;
+        pendingStartPayloads = [];
+        window.__nx_start_payload = null;
+        log("OnMiniStart replayed after bindUnityInstance");
+      }
+    }
+  }
+
   window.bindUnityInstance = function (inst) {
     unityInstanceRef = inst;
+    flushBufferedPayloads();
   };
 
   window.__nx_init_payload = null;
@@ -19,10 +74,16 @@
 
   window.OnMiniInit = function (payload) {
     try {
-      var s = JSON.stringify(payload || {});
+      var s = safeStringify(payload);
       window.__nx_init_payload = s;
-      if (unityInstanceRef) {
-        unityInstanceRef.SendMessage("NianxieBridge", "OnMiniInit", s);
+      pendingInitPayloads.push(s);
+      if (!hasDeliveredInitToUnity && deliverPayloadToUnity("OnMiniInit", s)) {
+        hasDeliveredInitToUnity = true;
+        pendingInitPayloads = [];
+        window.__nx_init_payload = null;
+        log("OnMiniInit delivered immediately");
+      } else {
+        log("OnMiniInit buffered (unity not bound yet)");
       }
     } catch (e) {
       console.error("[NxBridge] OnMiniInit error:", e);
@@ -31,10 +92,16 @@
 
   window.OnMiniStart = function (payload) {
     try {
-      var s = JSON.stringify(payload || {});
+      var s = safeStringify(payload);
       window.__nx_start_payload = s;
-      if (unityInstanceRef) {
-        unityInstanceRef.SendMessage("NianxieBridge", "OnMiniStart", s);
+      pendingStartPayloads.push(s);
+      if (!hasDeliveredStartToUnity && deliverPayloadToUnity("OnMiniStart", s)) {
+        hasDeliveredStartToUnity = true;
+        pendingStartPayloads = [];
+        window.__nx_start_payload = null;
+        log("OnMiniStart delivered immediately");
+      } else {
+        log("OnMiniStart buffered (unity not bound yet)");
       }
     } catch (e) {
       console.error("[NxBridge] OnMiniStart error:", e);

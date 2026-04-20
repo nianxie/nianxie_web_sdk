@@ -48,13 +48,13 @@ Reports:
 ## Runtime flow
 
 1. Host sends `OnMiniInit(payload)` to JS.
-2. Bridge forwards payload into Unity and caches it for polling.
-3. Unity sends `NxSendReady(...)` when assets are ready.
+2. Bridge forwards payload into Unity and caches/replays if Unity instance binds late.
+3. Unity home/menu becomes visible, then calls `NotifyHomeReady()` (or `SendReady(...)`).
 4. Host sends `OnMiniStart(payload)` and gameplay starts.
 5. Unity sends `NxSendEnd(...)` on completion.
 
 ## Notes
 
-- `NianxieBridge.cs` auto-sends `ready` in `OnMiniInit` as a starter behavior.
-- Replace starter behavior with your own asset-load completion condition.
+- `NianxieBridge.cs` defaults to **not** auto-send `ready` in `OnMiniInit`.
+- Recommended flow: send `ready` only after home/menu is visible.
 - Keep script names unchanged unless you also update the corresponding bridge calls.
