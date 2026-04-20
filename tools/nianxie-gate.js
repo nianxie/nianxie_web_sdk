@@ -13,12 +13,15 @@ function runNodeScript(scriptName, passthroughArgs) {
 
 function printHelp() {
   process.stdout.write(`nianxie-gate commands:
+  package
   verify-runtime
+  preflight
+  submit-prepare
   simulate-host
 
 notes:
-  - this Unity branch provides lightweight runtime checks only
-  - run under your exported web project root (contains dist/)
+  - runtime bundle only needs nianxie-interaction-sdk.js
+  - gate commands are local dev/CI tools
 `);
 }
 
@@ -31,7 +34,10 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
   process.exit(0);
 }
 
-if (command === 'verify-runtime') runNodeScript('nx-verify-runtime.js', passthrough);
+if (command === 'package') runNodeScript('nx-package.js', passthrough);
+else if (command === 'verify-runtime') runNodeScript('nx-verify-runtime.js', passthrough);
+else if (command === 'preflight') runNodeScript('nx-preflight.js', passthrough);
+else if (command === 'submit-prepare') runNodeScript('nx-submit-prepare.js', passthrough);
 else if (command === 'simulate-host') runNodeScript('local-host-simulator.js', passthrough);
 else {
   process.stderr.write(`Unknown command: ${command}\n`);

@@ -16,6 +16,73 @@
 - 用户侧发布前仅通过开发者平台进行测试与验收。
 - 当作品遵守本规范并在开发者平台运行通过时，Flutter 侧应可直接使用。
 
+## 目录导航
+
+- [开发阶段强制流程（必须执行）](#开发阶段强制流程必须执行)
+- [获取 WebSDK](#获取-websdk)
+- [[0] 产物类型（先选模式）](#0-产物类型先选模式)
+- [[1] 必须遵守的协议与时序](#1-必须遵守的协议与时序)
+- [[2] 模板引擎最低能力](#2-模板引擎最低能力)
+- [[3] 画面与交付约束](#3-画面与交付约束)
+- [[4] 实现模板（推荐写法）](#4-实现模板推荐写法)
+- [[5] 上传与运行对齐要求](#5-上传与运行对齐要求)
+- [[6] 验收清单（提交前必须自检）](#6-验收清单提交前必须自检)
+- [[7] 常见问题排查](#7-常见问题排查)
+- [[8] SDK API 速查](#8-sdk-api-速查)
+- [[9] 资源依赖、加载与开发者平台发布说明](#9-资源依赖加载与开发者平台发布说明)
+- [[10] 本地宿主模拟器（与平台错误对齐）](#10-本地宿主模拟器与平台错误对齐)
+- [[11] 统一错误码字典（平台/脚本/AI 通用）](#11-统一错误码字典平台脚本ai-通用)
+- [[12] 命令契约（AI 与开发者共用）](#12-命令契约ai-与开发者共用)
+- [[13] 模板工程自检闸门（本地/CI）](#13-模板工程自检闸门本地ci)
+- [[14] 人工/AI 按报告修复的标准闭环](#14-人工ai-按报告修复的标准闭环)
+
+## 建议阅读顺序
+
+1. 首次接入：先看 [获取 WebSDK](#获取-websdk) + [[0]](#0-产物类型先选模式) + [[1]](#1-必须遵守的协议与时序) + [[3]](#3-画面与交付约束) + [[4]](#4-实现模板推荐写法)。
+2. 发布前自检：看 [[6]](#6-验收清单提交前必须自检) + [[9]](#9-资源依赖加载与开发者平台发布说明) + [[12]](#12-命令契约ai-与开发者共用) + [[13]](#13-模板工程自检闸门本地ci)。
+3. 报错排查：看 [[7]](#7-常见问题排查) + [[10]](#10-本地宿主模拟器与平台错误对齐) + [[11]](#11-统一错误码字典平台脚本ai-通用) + [[14]](#14-人工ai-按报告修复的标准闭环)。
+
+## 开发阶段强制流程（必须执行）
+
+任何模板（AI 生成或人工编写）提交前必须按以下顺序执行，且只认 `dist` 产物，不认 `src`：
+
+1. `npm run nx:package`
+   - 编排安装依赖、构建、产出 `dist/` 与 `dist.zip`
+   - 若工程根目录存在 `schema.json` 或 `schema/schema.json`，会将 `schema.json` 注入到 `dist.zip` 的 `dist/` 根目录；若两者同时存在，优先使用 `schema/schema.json`
+   - 若工程根目录存在 `config.json` 或 `config/config.json`，会将 `config.json` 注入到 `dist.zip` 的 `dist/` 根目录；若两者同时存在，优先使用 `config/config.json`
+   - 生成 `reports/package-report.json`
+   - 该阶段仅输出 warning，不因 warning 阻断
+2. `npm run nx:verify:runtime`
+   - 基于 `dist` 与 `dist.zip` 校验协议闭环、资源可达、路径/运行时兼容
+   - 生成 `reports/runtime-verify.json`
+   - 若存在阻断项，退出码必须非 0
+3. `npm run nx:submit:prepare`
+   - 仅在 preflight 通过后输出“最终可上传包路径 + 摘要”
+
+上传交互模式（当前默认）：
+
+- 本地浏览器负责：解压、校验、预览、产包（`dist` / `dist.zip`）。
+- 浏览器直连服务端 API，并直传对象存储（如 OSS）。
+- 不经过开发者本机做代理中转；后续如需本机代理可再作为可选通道引入。
+
+如果是 AI 自动修复流程，AI 必须遵守同一顺序：先 package，再 verify，再 submit prepare；不得跳过阻断校验直接提交。
+
+### 失败分级（统一口径）
+
+- `warning`（不阻断）：
+  - 可能的路径规范风险（但当前构建仍可运行）
+  - 资源策略建议项（如线上静态资源缺少降级提示）
+  - 协议可观测性建议项（日志/诊断开关缺失）
+- `blocking`（阻断提交）：
+  - 缺失 `dist/index.html`
+  - 缺失 `nianxie-interaction-sdk.js` 引用
+  - 绝对路径入口依赖（`/assets/...`）
+  - 资源引用缺失（构建后文件不可达）
+  - 时序闭环缺失（未覆盖 `onInit/onStart/sendReady/sendEnd`）
+  - 检测到 dev runtime 标记（如 `@vite/client`、`import.meta.hot`、`localhost`）
+
+---
+
 ## 获取 WebSDK
 
 优先使用 npm 安装（GitHub Packages）：
@@ -23,6 +90,16 @@
 ```bash
 npm install @nianxie/nianxie-interaction-sdk --@nianxie:registry=https://npm.pkg.github.com
 ```
+
+同一个 npm 包同时提供：
+
+- 运行时 SDK：`nianxie-interaction-sdk.js`
+- 开发/CI 闸门 CLI：`nianxie-gate`
+
+约束说明：
+
+- 模板运行时代码只应依赖 `nianxie-interaction-sdk.js`。
+- `nianxie-gate` 与 `tools/*` 仅用于本地开发和 CI 校验，不应在业务运行时被 import。
 
 如果需要固定版本，可指定版本号：
 
@@ -121,6 +198,14 @@ npm install @nianxie/nianxie-interaction-sdk@0.1.0 --registry=https://npm.pkg.gi
 - 交付入口必须为 `dist/index.html`
 - 代码入口与本地资源引用优先使用相对路径（如 `./assets/...`、`./nianxie-interaction-sdk.js`）
 - 允许使用线上静态资源（如 OSS 图片/音频），但需保证资源稳定可访问并有失败降级
+
+singlefile 模式建议（强烈推荐）：
+
+- `vite.config.ts` 使用 `base: "./"` 并启用 `vite-plugin-singlefile`。
+- SDK 优先在业务代码中通过 npm import（例如 `import NianxieInteractionSDK from "@nianxie/nianxie-interaction-sdk"`）。
+- 不建议在 `index.html` 写 `./node_modules/...` 脚本路径；构建产物中该路径通常无效。
+- 若必须保留独立 SDK 文件，请通过 `public/nianxie-interaction-sdk.js` 输出并以 `./nianxie-interaction-sdk.js` 相对路径引用。
+- 绝对路径（如 `/assets/...`、`url(/assets/...)`）视为阻断项；上传 OSS 场景必须改为相对路径。
 
 ---
 
@@ -259,6 +344,39 @@ useEffect(() => {
 - 检查 `onStart` 回调是否已注册
 - 检查是否被局部状态/防重逻辑提前 return
 
+### Q4: 运行 `npx nianxie-gate preflight` 报错 `Missing script: "nx:package"`
+
+原因：
+
+- 当前版本的 `preflight` 会调用项目内 `nx:package` 与 `nx:verify:runtime` 脚本。
+- 如果模板项目 `package.json` 未声明这些脚本，就会出现该错误。
+
+修复：
+
+1. 在模板项目 `package.json` 增加 `nx:*` 脚本映射（见 `第13章`）。
+2. 之后统一用 `npm run nx:preflight` 执行，不直接裸跑其他自定义链路。
+
+补充：
+
+- AI 生成模板后，第一步先检查 `package.json` 是否存在 `nx:package`/`nx:verify:runtime`/`nx:preflight`，缺失则先补齐再执行验证。
+
+### Q5: 使用 `vite-plugin-singlefile` 后，runtime 校验报协议缺失或 SDK 缺失
+
+优先检查：
+
+- 是否把 SDK 错误地写成 `index.html` 的 `./node_modules/...` 路径（构建后通常不可达）。
+- 是否在业务代码里通过 npm import 接入 SDK（推荐做法）。
+- `vite.config.ts` 是否为 `base: "./"`（避免生成绝对路径）。
+- 是否仍处于 dev 产物（`@vite/client`、`import.meta.hot` 等）而非 build 产物。
+
+CLI 口径说明：
+
+- `nx:verify:runtime` 已支持 singlefile 场景，会同时扫描 `dist/*.js` 与 `index.html` 内联脚本。
+- 协议闭环识别目标不变：`onInit/onStart/sendReady/sendEnd`。
+- 资源校验同样覆盖 singlefile：会校验脚本中的媒体引用是否能命中 `dist`，并阻断绝对路径资源引用（如 `/assets/...`）。
+- 开发者平台最终以运行时闭环表现为准，不强制要求 `index.html` 必须显式存在 `nianxie-interaction-sdk.js` 标签。
+- 资源策略：未被入口引用的冗余资源默认不阻断；仅“被引用但路径错误/不可达”阻断。
+
 ---
 
 ## 8. SDK API 速查
@@ -271,9 +389,27 @@ useEffect(() => {
 - `sdk.request(name, { extras }, { timeoutMs })`
 - `sdk.waitForBridge(...)`
 - `sdk.waitForContext(...)`
+- `sdk.getDiagnosticsEvents()`
+- `sdk.getDiagnosticsState()`
 - `sdk.destroy()`
 
 类型定义见：`websdk/index.d.ts`
+
+开发态诊断开关示例（不改变生产协议）：
+
+```js
+const sdk = NianxieInteractionSDK.createNianxieInteractionSDK({
+  diagnostics: {
+    enabled: true,
+    readyTimeoutMs: 8000,
+    endTimeoutMs: 120000,
+    onEvent: (event) => {
+      // event: { level, phase, errorCode, suggestion, detail, ts }
+      console.log('[sdk-diag]', event);
+    },
+  },
+});
+```
 
 ---
 
@@ -347,3 +483,119 @@ npm run build
 
 - 本规范允许线上静态资源（OSS 图片/音频等）。
 - 但对“随包发布资源”的强保证，仍以静态 import + 映射方案为准。
+
+---
+
+## 10. 本地宿主模拟器（与平台错误对齐）
+
+命令：`npm run nx:simulate:host`
+
+用途：
+
+- 在本地对 `dist` 产物执行宿主侧最小模拟检查，输出 `reports/local-host-simulator.json`
+- 输出阶段与平台保持一致：`initSent -> readyReceived -> startSent -> endReceived`
+- 输出错误结构与平台一致：`errorCode`、`phase`、`suggestion`
+
+说明：
+
+- 该命令用于“开发态自检”和问题定位，不替代 `nx:verify:runtime` 阻断闸门。
+- 若本地模拟器已出现阻断项，必须先修复再继续提交流程。
+
+## 11. 统一错误码字典（平台/脚本/AI 通用）
+
+错误码定义在 `websdk/error-codes.json`，要求：
+
+- 平台校验、模板自检脚本、AI 修复建议必须使用同一 `errorCode`
+- 每个错误码必须提供：
+  - `phase`：`package` 或 `runtime`
+  - `severity`：`warning` 或 `blocking`
+  - `suggestion`：可直接执行的修复建议
+
+AI 在读取 `reports/*.json` 后，必须按 `errorCode -> suggestion` 给出修复动作，不得只返回泛化描述。
+
+## 12. 命令契约（AI 与开发者共用）
+
+- 推荐统一入口：`npm run nx:*`（避免漏配脚本导致链路不可用）。
+- `npx nianxie-gate <command>` 可作为底层执行器，但 `preflight` 依赖项目已声明 `nx:*` 脚本。
+- `nx:verify:runtime` 同时支持“多文件 dist”与 `vite-plugin-singlefile` 内联脚本产物。
+- `npm run nx:package`
+  - 退出码：`0`（warning 不阻断）
+  - 报告：`reports/package-report.json`
+  - 可选 JSON 注入：若命中以下候选路径，会把对应文件以 `dist/schema.json`、`dist/config.json` 写入压缩包（与 `dist/index.html` 同级）
+    - schema: `./schema/schema.json`（优先）或 `./schema.json`
+    - config: `./config/config.json`（优先）或 `./config.json`
+- `npm run nx:verify:runtime`
+  - 退出码：`0=通过`，`1=阻断失败`
+  - 报告：`reports/runtime-verify.json`
+  - 会校验：若源路径命中可选 JSON，则 `dist.zip` 中必须存在对应注入文件
+- `npm run nx:preflight`
+  - 行为：顺序执行 `nx:package` -> `nx:verify:runtime`
+  - 规则：仅 runtime 阻断项决定成功/失败
+- `npm run nx:submit:prepare`
+  - 仅在 `nx:preflight` 通过后输出上传包路径与摘要
+  - 报告 `reports/submit-prepare.json` 会附带可选 JSON 期望与注入元信息
+
+## 13. 模板工程自检闸门（本地/CI）
+
+推荐在模板工程的 `package.json` 固定以下脚本（与本仓脚本同名）：
+
+```json
+{
+  "scripts": {
+    "nx:package": "npx nianxie-gate package",
+    "nx:verify:runtime": "npx nianxie-gate verify-runtime",
+    "nx:preflight": "npx nianxie-gate preflight",
+    "nx:submit:prepare": "npx nianxie-gate submit-prepare",
+    "nx:simulate:host": "npx nianxie-gate simulate-host"
+  }
+}
+```
+
+接入后建议先执行一次：
+
+```bash
+npm run nx:preflight
+```
+
+CI 侧执行建议：
+
+1. PR 阶段：执行 `npm run nx:package`，允许 warning，但必须上传 `reports/package-report.json`
+2. 合并前闸门：执行 `npm run nx:verify:runtime`，若退出码非 0 则阻断
+3. 发布前：执行 `npm run nx:submit:prepare`，归档 `dist.zip` 与 `reports/*.json`
+
+这样可保证“打包期提示风险、运行期阻断硬错误”的双阶段策略稳定执行。
+
+## 14. 人工/AI 按报告修复的标准闭环
+
+该流程适用于开发者手工修复，也适用于 AI 自动修复。
+
+### 14.1 固定循环
+
+1. 执行 `npm run nx:preflight`（或分步执行 `nx:package` + `nx:verify:runtime`）。
+2. 读取 `reports/package-report.json` 与 `reports/runtime-verify.json`。
+3. 按 `errorCode` 定位并修复代码/配置问题。
+4. 再次执行 `npm run nx:preflight`。
+5. 直到满足：
+   - `package-report.json.warningCount` 可为 `0`（建议）或可接受范围；
+   - `runtime-verify.json.blockingCount` 必须为 `0`。
+
+### 14.2 修复优先级
+
+- 优先修 `runtime` 阻断项（`severity=blocking`）：未清零不得提交。
+- 再处理 `package` 警告项（`severity=warning`）：建议在发布前尽量清零。
+
+### 14.3 AI 执行约束（必须）
+
+- AI 不得跳过报告读取步骤，不得只看终端摘要。
+- AI 必须基于 `errorCode -> suggestion` 输出“具体修改动作 + 目标文件”。
+- AI 每轮修复后必须重新跑 `nx:preflight`，并附带新的 `reports/*.json` 结果。
+- 若遇到 `Missing script: "nx:package"`，先补 `package.json` 的 `nx:*` 脚本映射再继续。
+
+### 14.4 最小交付判定
+
+仅当满足以下条件，才允许进入“提交开发者平台”：
+
+- `reports/runtime-verify.json` 中 `ok=true` 且 `blockingCount=0`
+- `dist.zip` 已生成
+- `reports/submit-prepare.json` 已生成并包含 `uploadArtifact` 与 `sha256`
+- 若工程存在 `schema/config` 可选 JSON 源文件，`dist.zip` 中已包含 `dist/schema.json`/`dist/config.json`（与 `dist/index.html` 同级）

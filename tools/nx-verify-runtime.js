@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const {
+  ROOT_DIR,
   DIST_DIR,
   DIST_ZIP_PATH,
   REPORT_DIR,
@@ -13,12 +15,15 @@ const {
   normalizeRefPath,
   makeIssue,
   loadErrorDictionary,
+  collectOptionalJsonSources,
 } = require('./nx-common');
 
 const DEV_RUNTIME_REGEX = /@vite\/client|import\.meta\.hot|localhost|127\.0\.0\.1|0\.0\.0\.0/i;
 const SDK_SIGNAL_REGEX = /nianxie-interaction-sdk\.js|NianxieInteractionSDK|createNianxieInteractionSDK/;
 const MEDIA_REF_REGEX = /["'`]([^"'`]+\.(?:png|jpg|jpeg|gif|webp|svg|mp3|wav|ogg|m4a|aac|flac|mp4|webm))(?:\?[^"'`]*)?["'`]/gi;
 const REMOTE_ABSOLUTE_REGEX = /^[a-z][a-z0-9+\-.]*:\/\//i;
+const INDEX_SCRIPT_REGEX = /<script[^>]+src=['"]([^'"]+)['"][^>]*>/gi;
+const CSS_URL_REGEX = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
 
 function resolveResourceRef(rawRef, baseDir = '') {
   const trimmed = String(rawRef || '').trim();
@@ -37,6 +42,29 @@ function resolveResourceRef(rawRef, baseDir = '') {
 function resolveSuggestion(dict, code, fallback) {
   const meta = dict[code] || {};
   return meta.suggestion || fallback;
+}
+
+function listZipEntries() {
+  if (!fs.existsSync(DIST_ZIP_PATH)) return [];
+  let result = spawnSync('unzip', ['-Z1', DIST_ZIP_PATH], {
+    cwd: ROOT_DIR,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    result = spawnSync('zipinfo', ['-1', DIST_ZIP_PATH], {
+      cwd: ROOT_DIR,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    });
+  }
+  if (result.status !== 0) {
+    throw new Error(`无法读取 dist.zip 内容：${result.stderr || result.stdout || 'unknown error'}`);
+  }
+  return String(result.stdout || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function checkRuntime() {
@@ -92,9 +120,21 @@ function checkRuntime() {
     }
   }
 
-  const jsFiles = getDistFiles().filter((item) => item.rel.endsWith('.js'));
+  const referencedScriptPaths = new Set();
+  for (const match of indexText.matchAll(INDEX_SCRIPT_REGEX)) {
+    const rawRef = match[1] || '';
+    const parsed = resolveResourceRef(rawRef, '');
+    if (parsed.skip || parsed.isAbsolute || !parsed.resolved) continue;
+    if (!distFileSet.has(parsed.resolved)) continue;
+    if (!/\.m?js$/i.test(parsed.resolved)) continue;
+    referencedScriptPaths.add(parsed.resolved);
+  }
+
   const runtimeScriptSources = [
-    ...jsFiles.map((item) => ({ source: fs.readFileSync(item.abs, 'utf8'), path: item.rel })),
+    ...Array.from(referencedScriptPaths).map((relPath) => ({
+      source: fs.readFileSync(path.join(DIST_DIR, relPath), 'utf8'),
+      path: relPath,
+    })),
     ...inlineScripts.map((source, index) => ({ source, path: `index.html:inline-script#${index + 1}` })),
   ];
 
@@ -177,6 +217,28 @@ function checkRuntime() {
     );
   }
 
+  // CSS absolute-path guard for OSS/static hosting compatibility.
+  const cssFiles = getDistFiles().filter((item) => item.rel.endsWith('.css'));
+  for (const cssFile of cssFiles) {
+    const cssText = fs.readFileSync(cssFile.abs, 'utf8');
+    for (const match of cssText.matchAll(CSS_URL_REGEX)) {
+      const rawRef = String(match[2] || '').trim();
+      if (!rawRef || REMOTE_ABSOLUTE_REGEX.test(rawRef) || rawRef.startsWith('data:') || rawRef.startsWith('blob:')) continue;
+      if (rawRef.startsWith('/')) {
+        issues.push(
+          makeIssue(
+            'NX_BLOCK_ABSOLUTE_PATH_IN_INDEX',
+            'runtime',
+            'blocking',
+            '检测到 CSS 绝对路径资源引用，上传 OSS 后可能无法命中',
+            resolveSuggestion(dict, 'NX_BLOCK_ABSOLUTE_PATH_IN_INDEX', '改为相对路径引用'),
+            `${cssFile.rel}: ${rawRef}`
+          )
+        );
+      }
+    }
+  }
+
   const missingHandlers = Object.entries(protocolFingerprint)
     .filter((entry) => !entry[1])
     .map((entry) => entry[0]);
@@ -200,10 +262,28 @@ function checkRuntime() {
         'runtime',
         'blocking',
         '缺少 dist.zip，无法进入提交流程',
-        '先执行打包生成 dist.zip',
+        '先执行 npm run nx:package 生成 dist.zip',
         DIST_ZIP_PATH
       )
     );
+  } else {
+    const zipEntries = new Set(listZipEntries());
+    const optionalJsonSources = collectOptionalJsonSources();
+    for (const item of optionalJsonSources) {
+      if (!item.shouldIncludeInZip) continue;
+      if (!zipEntries.has(item.targetInZip)) {
+        issues.push(
+          makeIssue(
+            'NX_BLOCK_ENTRY_ASSET_MISSING',
+            'runtime',
+            'blocking',
+            `检测到 ${item.name} 源文件存在，但 dist.zip 缺少同级注入文件`,
+            `请确保执行 nx:package 时将 ${item.name} 注入到 dist/ 根目录`,
+            item.targetInZip
+          )
+        );
+      }
+    }
   }
 
   return issues;
