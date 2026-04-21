@@ -1,3 +1,253 @@
+# Nianxie WebSDK 标准文档（Master）
+
+本文档按固定四部分组织，给开发者与 AI 同一套执行口径：
+
+1. 信号说明（协议与时序）
+2. 作品制作（Playable Work）
+3. 模版制作（Configurable Template）
+4. 提供的指令（命令、报告、提交流程）
+
+适用目标：
+
+- 在开发者平台上传并试运行通过
+- 在宿主完成 `init -> ready -> start -> end` 闭环
+- 可交付“可上传 + 可配置 + 可运行”的模版
+
+---
+
+## 第一部分：信号说明
+
+### 1.1 四段式协议（必须）
+
+1. Flutter -> Web：`window.OnMiniInit(payload)`（`interaction_init`）
+2. Web -> Flutter：`NianxieMiniReady`（`interaction_ready`）
+3. Flutter -> Web：`window.OnMiniStart(payload)`（`interaction_start`）
+4. Web -> Flutter：`NianxieMiniEnd`（`interaction_end`）
+
+任何模板都必须走完闭环，不能只跑本地逻辑不回传信号。
+
+### 1.2 payload 规则（强约束）
+
+- `sessionId / itemId / title` 由 SDK 与宿主协同维护，不要手写或改写。
+- 业务数据统一放 `extras`。
+- craft 模式读取顺序：
+  - 首选 `payload.extras.craft`
+  - 兜底 `payload.craft`
+
+### 1.3 最小接入示例（原生 JS）
+
+```html
+<script src="./nianxie-interaction-sdk.js"></script>
+<script>
+  const sdk = NianxieInteractionSDK.createNianxieInteractionSDK({
+    source: "webview",
+    defaultTimeoutMs: 10000,
+  });
+
+  const offInit = sdk.onInit(async (payload) => {
+    const craft = payload?.extras?.craft ?? payload?.craft;
+    // 解析/校验/加载资源后发 ready
+    await sdk.sendReady({ extras: { stage: "assets-loaded" } });
+  });
+
+  const offStart = sdk.onStart(() => {
+    // 收到 start 才真正开始互动
+  });
+
+  async function finishInteraction() {
+    await sdk.sendEnd({ extras: { result: "completed" } });
+  }
+
+  // offInit(); offStart(); sdk.destroy();
+</script>
+```
+
+### 1.4 失败分级（统一口径）
+
+- `warning`（不阻断）：路径建议、线上资源降级建议、可观测性建议
+- `blocking`（阻断提交）：
+  - 缺失 `dist/index.html`
+  - 缺失 SDK 接入信号
+  - 绝对路径依赖（如 `/assets/...`）
+  - 资源引用在 `dist` 不可达
+  - 闭环缺失（未覆盖 `onInit/onStart/sendReady/sendEnd`）
+  - dev runtime 标记（`@vite/client`、`import.meta.hot`、`localhost`）
+
+---
+
+## 第二部分：作品制作（Playable Work）
+
+适用场景：只交付单作品，不依赖外部 craft。
+
+### 2.1 目标
+
+- 可上传
+- 可运行
+- 可结束（稳定发送 `end`）
+
+### 2.2 交付约束
+
+- 允许使用本地固定 JSON。
+- 本地资源用相对路径（如 `./assets/...`）。
+- 入口必须是 `dist/index.html`。
+- 核心运行 JS 不依赖远端 CDN。
+- 页面需兼容 `9:16` 竖向容器。
+
+### 2.3 构建建议
+
+- `vite.config.ts` 使用 `base: "./"`。
+- 推荐启用 `vite-plugin-singlefile`。
+- 不要在 `index.html` 用 `./node_modules/...` 作为运行时脚本路径。
+- 若保留独立 SDK 文件，使用 `./nianxie-interaction-sdk.js` 相对路径。
+
+### 2.4 资源策略（作品模式）
+
+- 随包发布资源建议静态 `import ... ?url` 纳入依赖图。
+- 禁止运行时拼接本地路径（如 `"./assets/" + id + ".png"`）。
+- 允许线上静态资源（OSS），但必须有失败降级。
+
+### 2.5 自检清单
+
+- [ ] 收到 `OnMiniInit`
+- [ ] 发送 `sendReady`
+- [ ] 收到 `OnMiniStart`
+- [ ] 发送 `sendEnd`
+- [ ] `9:16` 显示稳定
+- [ ] 解析/加载失败有可见反馈
+
+---
+
+## 第三部分：模版制作（Configurable Template）
+
+适用场景：可被外部 craft JSON 驱动并复用。
+
+### 3.1 目标
+
+- 可上传
+- 可配置（消费外部 craft）
+- 可运行
+
+### 3.2 模版能力下限
+
+- 运行内容由外部 craft 驱动，不把核心流程写死在包内。
+- 建议提供 schema（可导出 JSON Schema）。
+- 至少存在一个可达结束节点。
+- 关键阶段可观测（init / ready / start / end）。
+
+### 3.3 建议数据流
+
+1. `onInit` 收到 payload  
+2. 读取 `extras.craft`（兜底 `craft`）  
+3. 解析与校验  
+4. 映射到内部状态  
+5. 资源预加载  
+6. 发送 `ready`  
+7. 收到 `start` 后进入互动态  
+8. 结束时发送 `end`
+
+### 3.4 上传与运行对齐要求
+
+- 在开发者平台可试运行通过。
+- 宿主日志应能看到：
+  - `initSent`
+  - `readyReceived`
+  - `startSent`
+  - `endReceived`
+
+### 3.5 常见问题速查
+
+- ready 超时：检查 `sendReady` 是否在所有分支都触发。
+- craft 为空：优先检查 `payload.extras.craft`，再看 `payload.craft`。
+- start 后无互动：检查 `onStart` 注册与状态防重逻辑。
+- singlefile 报协议缺失：确认扫描到的 `dist/*.js` 或内联脚本里有 SDK 闭环调用。
+
+---
+
+## 第四部分：提供的指令
+
+### 4.1 获取 WebSDK
+
+```bash
+npm install @nianxie/nianxie-interaction-sdk --@nianxie:registry=https://npm.pkg.github.com
+```
+
+固定版本示例：
+
+```bash
+npm install @nianxie/nianxie-interaction-sdk@0.5.0 --@nianxie:registry=https://npm.pkg.github.com
+```
+
+同一 npm 包包含：
+
+- 运行时 SDK：`nianxie-interaction-sdk.js`
+- 开发/CI 工具：`nianxie-gate` + `tools/*`
+
+### 4.2 模板工程脚本（推荐固定）
+
+```json
+{
+  "scripts": {
+    "nx:package": "npx nianxie-gate package",
+    "nx:verify:runtime": "npx nianxie-gate verify-runtime",
+    "nx:preflight": "npx nianxie-gate preflight",
+    "nx:submit:prepare": "npx nianxie-gate submit-prepare",
+    "nx:simulate:host": "npx nianxie-gate simulate-host"
+  }
+}
+```
+
+### 4.3 标准执行顺序（必须）
+
+1. `npm run nx:package`
+   - 产出 `dist/`、`dist.zip`
+   - 输出 `reports/package-report.json`
+   - warning 不阻断
+2. `npm run nx:verify:runtime`
+   - 校验闭环、资源、路径、运行时兼容
+   - 输出 `reports/runtime-verify.json`
+   - 有 blocking 则退出码非 0
+3. `npm run nx:submit:prepare`
+   - 仅在 preflight 通过后输出上传摘要
+   - 输出 `reports/submit-prepare.json`（含 sha256）
+
+### 4.4 关键报告说明
+
+- `reports/package-report.json`：打包阶段 warning 与产物信息
+- `reports/runtime-verify.json`：runtime 阻断项（是否可提交的主判定）
+- `reports/local-host-simulator.json`：本地宿主模拟阶段轨迹
+- `reports/submit-prepare.json`：最终上传包路径与 sha256
+
+### 4.5 最小提交流程
+
+```bash
+npm run nx:preflight
+npm run nx:submit:prepare
+```
+
+通过标准：
+
+- `runtime-verify.json` 中 `ok=true`
+- `blockingCount=0`
+- `dist.zip` 已生成
+- `submit-prepare.json` 已生成并包含 `uploadArtifact` 与 `sha256`
+
+---
+
+## SDK API 速查
+
+- `createNianxieInteractionSDK(options)`
+- `sdk.onInit(callback)`
+- `sdk.onStart(callback)`
+- `sdk.sendReady({ extras }, { timeoutMs })`
+- `sdk.sendEnd({ extras }, { timeoutMs })`
+- `sdk.request(name, { extras }, { timeoutMs })`
+- `sdk.waitForBridge(...)`
+- `sdk.waitForContext(...)`
+- `sdk.getDiagnosticsEvents()`
+- `sdk.getDiagnosticsState()`
+- `sdk.destroy()`
+
+类型定义见 `index.d.ts`。
 # WebSDK 模板制作与接入总规范
 
 本文档是唯一权威规范，面向：
