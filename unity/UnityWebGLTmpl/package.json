@@ -1,0 +1,18 @@
+{
+  "name": "com.nianxie.webgl-template",
+  "version": "0.5.0",
+  "displayName": "Nianxie Unity WebGL Template",
+  "description": "Unity WebGL bridge and template files for Nianxie host lifecycle (init/ready/start/end).",
+  "unity": "2021.3",
+  "author": {
+    "name": "Nianxie",
+    "url": "https://github.com/nianxie/nianxie_web_sdk"
+  },
+  "keywords": [
+    "webgl",
+    "unity",
+    "template",
+    "bridge",
+    "nianxie"
+  ]
+}
