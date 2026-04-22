@@ -46,16 +46,17 @@ git clone https://github.com/nianxie/nianxie_web_sdk.git
 - 本地资源使用相对路径（如 `./assets/...`）
 - 业务字段统一放在 `extras`
 
-## 2. 信号量作用
+## 2. 信号量(<span style="color:red;">必须</span>)
 
-信号量用于同步 Web 页面和 Flutter 宿主的生命周期：
+信号量是<span style="color:red;">必须</span>实现的协议，不是可选项。  
+必须完整走完这 4 个信号：
 
 1. `OnMiniInit`（Flutter -> Web）：收到信号后开始初始化页面(资源、逻辑准备等)
 2. `NianxieMiniReady`（Web -> Flutter）：页面准备完成后发送ready信号给宿主，但暂不开始
 3. `OnMiniStart`（Flutter -> Web）：收到宿主发来的开始信号，开始正常运行
 4. `NianxieMiniEnd`（Web -> Flutter）：运行结束，发送结束信号给宿主
 
-缺少任意信号都会导致流程异常（如超时、无法开始、无法结束）。
+缺少任意信号即视为协议不完整，会导致流程异常（如超时、无法开始、无法结束），并可能导致校验不通过。
 
 ## 3. 检查工具如何使用
 
