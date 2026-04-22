@@ -7,66 +7,61 @@ using UnityEngine;
 public static class NianxieWebGLTemplateInstaller
 {
     private const string MenuInstallTemplate = "Tools/Nianxie/Install WebGL Template To Assets";
-    private const string MenuOpenTemplateSettings = "Tools/Nianxie/Open WebGL Template Settings";
+    private const string PackageName = "com.nianxie.webgl-template";
 
     [MenuItem(MenuInstallTemplate)]
     public static void InstallTemplateToAssets()
     {
-        var packageRoot = GetPackageRoot();
-        if (string.IsNullOrWhiteSpace(packageRoot))
+        try
         {
-            EditorUtility.DisplayDialog("Nianxie", "Cannot resolve package root path.", "OK");
-            return;
+            var packageRoot = GetPackageRoot();
+            if (string.IsNullOrWhiteSpace(packageRoot))
+            {
+                Debug.LogError("失败: 无法解析 package 根目录");
+                return;
+            }
+
+            var source = Path.Combine(packageRoot, "WebGLTemplates/NianxieTemplate").Replace("\\", "/");
+            var target = "Assets/WebGLTemplates/NianxieTemplate";
+
+            if (!Directory.Exists(source))
+            {
+                Debug.LogError($"失败: 模板目录不存在 -> {source}");
+                return;
+            }
+
+            var parent = "Assets/WebGLTemplates";
+            if (!Directory.Exists(parent))
+            {
+                Directory.CreateDirectory(parent);
+            }
+
+            if (Directory.Exists(target))
+            {
+                FileUtil.DeleteFileOrDirectory(target);
+            }
+
+            FileUtil.CopyFileOrDirectory(source, target);
+            AssetDatabase.Refresh();
+            Debug.Log("成功");
         }
-
-        var source = Path.Combine(packageRoot, "WebGLTemplates/NianxieTemplate").Replace("\\", "/");
-        var target = "Assets/WebGLTemplates/NianxieTemplate";
-
-        if (!Directory.Exists(source))
+        catch (System.Exception ex)
         {
-            EditorUtility.DisplayDialog("Nianxie", $"Template source not found:\n{source}", "OK");
-            return;
+            Debug.LogError($"失败: {ex.Message}");
         }
-
-        var parent = "Assets/WebGLTemplates";
-        if (!Directory.Exists(parent))
-        {
-            Directory.CreateDirectory(parent);
-        }
-
-        if (Directory.Exists(target))
-        {
-            var overwrite = EditorUtility.DisplayDialog(
-                "Nianxie",
-                $"Target already exists:\n{target}\n\nOverwrite it?",
-                "Overwrite",
-                "Cancel");
-            if (!overwrite) return;
-
-            FileUtil.DeleteFileOrDirectory(target);
-        }
-
-        FileUtil.CopyFileOrDirectory(source, target);
-        AssetDatabase.Refresh();
-
-        EditorUtility.DisplayDialog(
-            "Nianxie",
-            "Template installed.\n\nNow select 'NianxieTemplate' in Player Settings -> WebGL Template.",
-            "OK");
-    }
-
-    [MenuItem(MenuOpenTemplateSettings)]
-    public static void OpenTemplateSettings()
-    {
-        SettingsService.OpenProjectSettings("Project/Player");
-        EditorUtility.DisplayDialog(
-            "Nianxie",
-            "Open: Project Settings -> Player -> WebGL -> Resolution and Presentation -> WebGL Template\nThen choose 'NianxieTemplate'.",
-            "OK");
     }
 
     private static string GetPackageRoot()
     {
+        // Preferred: resolve by package name. Works even when this menu script is copied into Assets/.
+        var rootByName = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Packages", PackageName))
+            .Replace("\\", "/");
+        if (Directory.Exists(rootByName))
+        {
+            return rootByName;
+        }
+
+        // Fallback: resolve by the assembly this script belongs to.
         var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(Assembly.GetExecutingAssembly());
         return package?.resolvedPath?.Replace("\\", "/");
     }
