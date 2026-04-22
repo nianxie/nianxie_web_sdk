@@ -136,5 +136,5 @@
     }
   };
 
-  console.log("[NxBridge] bridge ready");
+  console.error("[NxBridge] bridge ready");
 })();

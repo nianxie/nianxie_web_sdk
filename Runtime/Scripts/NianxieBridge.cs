@@ -1,7 +1,11 @@
 using System;
+using System.Collections;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
+[DefaultExecutionOrder(-10000)]
 public class NianxieBridge : MonoBehaviour
 {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -13,25 +17,88 @@ public class NianxieBridge : MonoBehaviour
 #endif
 
     [SerializeField] private bool pollPayloadFromJs = true;
-    [SerializeField] private bool autoSendReadyOnInit = false;
-    [SerializeField] private string readyStageTag = "main-menu-visible";
+    [SerializeField] private bool autoPrelaunchOnInit = true;
+    [SerializeField] private int prelaunchStageId = 0;
+    [SerializeField] private int prelaunchCharacterId = 0;
+    [SerializeField] private bool prelaunchResetStageData = true;
+    [SerializeField] private bool pauseAfterPrelaunch = true;
+    [SerializeField] private bool resumeOnStart = true;
+    [SerializeField] private bool autoSendReadyAfterPrelaunch = true;
+    [SerializeField] private float readyDelaySeconds = 0.15f;
+    [SerializeField] private string readyStageTag = "game-paused-await-start";
+    [SerializeField] private bool applyTopSafeOffset = true;
+    [SerializeField] private float topSafeExtraOffsetPx = 150f;
 
     private bool hasReceivedInit;
     private bool hasSentReady;
+    private static NianxieBridge instance;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void AutoBootstrap()
+    {
+        if (instance != null) return;
+        var existing = UnityEngine.Object.FindObjectsOfType<NianxieBridge>(true)
+            .FirstOrDefault();
+        if (existing != null)
+        {
+            instance = existing;
+            DontDestroyOnLoad(existing.gameObject);
+            return;
+        }
+
+        var go = new GameObject("NianxieBridge");
+        DontDestroyOnLoad(go);
+        instance = go.AddComponent<NianxieBridge>();
+    }
+
+    private void Awake()
+    {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
+        gameObject.name = "NianxieBridge";
+        DontDestroyOnLoad(gameObject);
+    }
 
     public void OnMiniInit(string payloadJson)
     {
         Debug.Log($"[NianxieBridge] OnMiniInit payload={payloadJson}");
         hasReceivedInit = true;
-        if (autoSendReadyOnInit)
+        hasSentReady = false;
+
+        if (autoPrelaunchOnInit)
         {
-            TrySendReady(readyStageTag);
+            TryPrelaunchGame();
+        }
+        if (pauseAfterPrelaunch)
+        {
+            Time.timeScale = 0f;
+        }
+        if (applyTopSafeOffset)
+        {
+            StartCoroutine(ApplyTopSafeOffsetAfterFrame());
+        }
+        if (autoSendReadyAfterPrelaunch)
+        {
+            StartCoroutine(SendReadyAfterDelay());
         }
     }
 
     public void OnMiniStart(string payloadJson)
     {
         Debug.Log($"[NianxieBridge] OnMiniStart payload={payloadJson}");
+        if (resumeOnStart)
+        {
+            Time.timeScale = 1f;
+        }
+        if (applyTopSafeOffset)
+        {
+            StartCoroutine(ApplyTopSafeOffsetAfterFrame());
+        }
     }
 
     public void FinishInteraction()
@@ -68,7 +135,7 @@ public class NianxieBridge : MonoBehaviour
             return false;
         }
 
-        var safeStage = string.IsNullOrWhiteSpace(stageTag) ? "main-menu-visible" : stageTag;
+        var safeStage = string.IsNullOrWhiteSpace(stageTag) ? "game-paused-await-start" : stageTag;
         return SendReady("{\"stage\":\"" + safeStage + "\"}");
     }
 
@@ -122,4 +189,112 @@ public class NianxieBridge : MonoBehaviour
         }
     }
 #endif
+
+    private IEnumerator SendReadyAfterDelay()
+    {
+        if (readyDelaySeconds > 0f)
+        {
+            yield return new WaitForSecondsRealtime(readyDelaySeconds);
+        }
+        TrySendReady(readyStageTag);
+    }
+
+    private bool TryPrelaunchGame()
+    {
+        var gameControllerType = AppDomain.CurrentDomain
+            .GetAssemblies()
+            .SelectMany(assembly =>
+            {
+                try
+                {
+                    return assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException e)
+                {
+                    return e.Types.Where(t => t != null);
+                }
+            })
+            .FirstOrDefault(t => t != null && t.FullName == "OctoberStudio.GameController");
+
+        if (gameControllerType == null)
+        {
+            Debug.LogWarning("[NianxieBridge] GameController not found, skip prelaunch.");
+            return false;
+        }
+
+        var startGameDirect = gameControllerType.GetMethod(
+            "StartGameDirect",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+
+        if (startGameDirect == null)
+        {
+            Debug.LogWarning("[NianxieBridge] StartGameDirect not found, skip prelaunch.");
+            return false;
+        }
+
+        try
+        {
+            startGameDirect.Invoke(null, new object[]
+            {
+                prelaunchStageId,
+                prelaunchCharacterId,
+                prelaunchResetStageData,
+            });
+            Debug.Log("[NianxieBridge] Prelaunch dispatched.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("[NianxieBridge] Prelaunch failed: " + ex.Message);
+            return false;
+        }
+    }
+
+    private IEnumerator ApplyTopSafeOffsetAfterFrame()
+    {
+        yield return null;
+        try
+        {
+            var gameScreenType = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .SelectMany(assembly =>
+                {
+                    try
+                    {
+                        return assembly.GetTypes();
+                    }
+                    catch (ReflectionTypeLoadException e)
+                    {
+                        return e.Types.Where(t => t != null);
+                    }
+                })
+                .FirstOrDefault(t => t != null && t.FullName == "OctoberStudio.GameScreenBehavior");
+
+            if (gameScreenType == null) yield break;
+
+            var all = UnityEngine.Object.FindObjectsOfType(gameScreenType);
+            if (all == null || all.Length == 0) yield break;
+
+            var topUiField = gameScreenType.GetField("topUI",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (topUiField == null) yield break;
+
+            var topInsetPx = Mathf.Max(0f, Screen.height - Screen.safeArea.yMax);
+            var offset = topInsetPx + Mathf.Max(0f, topSafeExtraOffsetPx);
+
+            foreach (var item in all)
+            {
+                var canvasGroup = topUiField.GetValue(item) as CanvasGroup;
+                if (canvasGroup == null) continue;
+                var rect = canvasGroup.GetComponent<RectTransform>();
+                if (rect == null) continue;
+                var p = rect.anchoredPosition;
+                rect.anchoredPosition = new Vector2(p.x, -Mathf.Abs(offset));
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[NianxieBridge] ApplyTopSafeOffset failed: " + ex.Message);
+        }
+    }
 }

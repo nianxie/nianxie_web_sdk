@@ -1,11 +1,10 @@
 # Nianxie Unity WebGL UPM 插件
 
-这个分支已按 **UPM 插件仓库** 组织（包内结构：`Runtime/`、`WebGLTemplates/`）。  
-通过 UPM 拉取后，资源直接从 `Packages` 使用，不再执行拷贝到 `Assets` 的安装动作。
+该包面向 **UPM 开箱即用**：模板、JS bridge、C# bridge 都放在包内统一维护。
 
-## 1) UPM 接入方式
+## 1) UPM 接入
 
-在 Unity 项目 `Packages/manifest.json` 添加：
+在 Unity 项目 `Packages/manifest.json` 添加依赖：
 
 ```json
 {
@@ -15,37 +14,57 @@
 }
 ```
 
-说明：
+## 2) 一次性初始化
 
-- `#UnityWebGLTmpl`：指定分支
-
-如果你使用的是其他仓库地址，把 URL 替换成你的实际地址即可。
-
-## 2) 手动配置（必须）
-
-先在 Unity 菜单执行（一次即可）：
+在 Unity 菜单执行：
 
 - `Tools/Nianxie/Install WebGL Template To Assets`
+- `Tools/Nianxie/Init NianxieBridge In Current Scene`
 
-然后在 Unity 中设置：
+然后设置：
 
 - `Project Settings -> Player -> WebGL -> Resolution and Presentation -> WebGL Template`
-- 选择：`NianxieTemplate`
+- 选择 `NianxieTemplate`
 
-## 3) 必须的信号时序
+> `NianxieBridge` 也支持运行时自动创建；菜单初始化用于显式可视化配置和手动调参。
 
-> ⚠️ 必须完整走完：`init -> ready -> start -> end`
+## 3) 生命周期（内置默认行为）
+
+UPM Runtime 默认实现以下流程：
 
 1. Host -> WebGL：`window.OnMiniInit(payload)`
-2. WebGL -> Host：`NianxieMiniReady`
-3. Host -> WebGL：`window.OnMiniStart(payload)`
-4. WebGL -> Host：`NianxieMiniEnd`
+2. Unity 侧执行预启动逻辑（可选调用 `StartGameDirect`）并暂停（`Time.timeScale = 0`）
+3. WebGL -> Host：`NianxieMiniReady`
+4. Host -> WebGL：`window.OnMiniStart(payload)`
+5. Unity 恢复运行（`Time.timeScale = 1`）
+6. 游戏结束后主动发 `NianxieMiniEnd`
 
-缺少任意一步都视为协议不完整。
+核心脚本：`Runtime/Scripts/NianxieBridge.cs`
 
-## 4) 提交前最小检查
+## 4) 顶部安全区 + 150 偏移
 
-- ZIP 根目录有 `index.html` 和 `Build/`
-- 使用相对路径（`./Build/...`），不要绝对路径
+`NianxieBridge` 内置顶部 UI 下压逻辑：
+
+- 偏移量 = `设备顶部安全区高度 + extraTopOffsetPx`
+- 默认 `extraTopOffsetPx = 150`
+- 默认通过反射兼容 `OctoberStudio.GameScreenBehavior.topUI`
+
+如果项目 UI 结构不同，可关闭默认逻辑并在业务侧自行处理。
+
+## 5) WebGL 模板规范
+
+`WebGLTemplates/NianxieTemplate/index.html` 使用 Unity 官方模板变量（`{{{ ... }}}`）：
+
+- `{{{ LOADER_FILENAME }}}`
+- `{{{ DATA_FILENAME }}}`
+- `{{{ FRAMEWORK_FILENAME }}}`
+- `{{{ CODE_FILENAME }}}`
+
+避免 `%UNITY_WEBGL_*%` 未替换导致的导出事故。
+
+## 6) 打包前最小检查
+
+- ZIP 根目录包含 `index.html` 与 `Build/`
+- `index.html` 内使用相对路径（`./Build/...`）
 - 关键文件齐全：`*.loader.js / *.framework.js / *.data / *.wasm`
-- 运行流程能走完 `init -> ready -> start -> end`
+- 协议完整：`init -> ready -> start -> end`
