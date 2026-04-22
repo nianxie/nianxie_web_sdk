@@ -1,7 +1,7 @@
 # Nianxie Unity WebGL UPM 插件
 
-这个分支已按 **UPM 插件仓库** 组织。  
-通过 UPM 拉取后，Unity 会自动安装模板文件到 `Assets/`，可直接使用。
+这个分支已按 **UPM 插件仓库** 组织（包内结构：`Runtime/`、`WebGLTemplates/`）。  
+通过 UPM 拉取后，资源直接从 `Packages` 使用，不再执行拷贝到 `Assets` 的安装动作。
 
 ## 1) UPM 接入方式
 
@@ -21,18 +21,12 @@
 
 如果你使用的是其他仓库地址，把 URL 替换成你的实际地址即可。
 
-## 2) 拉取后会自动做什么
+## 2) 手动配置（必须）
 
-- 自动拷贝到项目：
-  - `Assets/Scripts/NianxieBridge.cs`
-  - `Assets/Plugins/WebGL/nianxie_bridge.jslib`
-  - `Assets/WebGLTemplates/NianxieTemplate`
-- 自动尝试设置 `PlayerSettings.WebGL.template = NianxieTemplate`
+在 Unity 中手动设置：
 
-如需手动重装，可在 Unity 菜单执行：
-
-- `Tools/Nianxie/Install WebGL Template To Assets`
-- `Tools/Nianxie/Reinstall WebGL Template To Assets (Force)`
+- `Project Settings -> Player -> WebGL -> Resolution and Presentation -> WebGL Template`
+- 选择：`NianxieTemplate`
 
 ## 3) 必须的信号时序
 
