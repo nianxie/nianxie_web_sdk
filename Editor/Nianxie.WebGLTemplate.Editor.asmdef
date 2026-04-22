@@ -1,0 +1,18 @@
+{
+  "name": "Nianxie.WebGLTemplate.Editor",
+  "rootNamespace": "",
+  "references": [
+    "Nianxie.WebGLTemplate.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

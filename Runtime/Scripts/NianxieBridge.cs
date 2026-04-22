@@ -37,8 +37,18 @@ public class NianxieBridge : MonoBehaviour
     private static void AutoBootstrap()
     {
         if (instance != null) return;
-        var existing = UnityEngine.Object.FindObjectsOfType<NianxieBridge>(true)
+#if UNITY_2023_1_OR_NEWER
+        var existing = UnityEngine.Object.FindObjectsByType<NianxieBridge>(FindObjectsSortMode.None)
             .FirstOrDefault();
+#else
+        var existing = UnityEngine.Object.FindObjectsOfType<NianxieBridge>()
+            .FirstOrDefault();
+#endif
+        if (existing == null)
+        {
+            existing = Resources.FindObjectsOfTypeAll<NianxieBridge>()
+                .FirstOrDefault(item => item != null && item.gameObject.scene.IsValid());
+        }
         if (existing != null)
         {
             instance = existing;
@@ -272,7 +282,13 @@ public class NianxieBridge : MonoBehaviour
 
             if (gameScreenType == null) yield break;
 
-            var all = UnityEngine.Object.FindObjectsOfType(gameScreenType);
+            var all = Resources.FindObjectsOfTypeAll(gameScreenType)
+                .Where(obj =>
+                {
+                    var component = obj as Component;
+                    return component != null && component.gameObject.scene.IsValid();
+                })
+                .ToArray();
             if (all == null || all.Length == 0) yield break;
 
             var topUiField = gameScreenType.GetField("topUI",
