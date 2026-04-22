@@ -23,7 +23,11 @@
 
 ## 2) 手动配置（必须）
 
-在 Unity 中手动设置：
+先在 Unity 菜单执行（一次即可）：
+
+- `Tools/Nianxie/Install WebGL Template To Assets`
+
+然后在 Unity 中设置：
 
 - `Project Settings -> Player -> WebGL -> Resolution and Presentation -> WebGL Template`
 - 选择：`NianxieTemplate`
