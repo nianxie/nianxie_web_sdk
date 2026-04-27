@@ -38,5 +38,15 @@
     "phase": "runtime",
     "severity": "blocking",
     "suggestion": "产物必须覆盖 onInit/onStart/sendReady/sendEnd 四段最小闭环"
+  },
+  "NX_REQUEST_BEFORE_READY": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "请在 await sdk.sendReady(...) 成功之后再请求原生能力"
+  },
+  "NX_CAMERA_UNAVAILABLE": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "当前环境不支持 navigator.mediaDevices.getUserMedia，或缺少摄像头能力"
   }
 }

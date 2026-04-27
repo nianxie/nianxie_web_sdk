@@ -57,7 +57,32 @@ git clone https://github.com/nianxie/nianxie_web_sdk.git
 
 缺少任意信号即视为协议不完整，会导致流程异常（如超时、无法开始、无法结束），并可能导致校验不通过。
 
-## 3. 检查工具如何使用
+## 3. 原生能力请求
+
+> 原生能力请求必须在 `await sdk.sendReady(...)` 成功之后发起。宿主只有收到 ready 信号后才会处理请求；ready 前调用会被拒绝，错误码为 `NX_REQUEST_BEFORE_READY`。
+
+```js
+sdk.onInit(async () => {
+  await sdk.sendReady({ extras: { stage: "ready" } });
+});
+
+sdk.onStart(async () => {
+  const profile = await sdk.getUserProfile();
+  const image = await sdk.pickImage();
+  await sdk.vibrate({ type: "light" });
+
+  const stream = await sdk.requestCameraStream({ facingMode: "environment" });
+  document.querySelector("video").srcObject = stream;
+});
+```
+
+- `requestCameraStream({ facingMode })`：请求实时摄像头流，`user` 为前置，`environment` 为后置。
+- `pickImage()`：请求宿主选择单张图片，返回本地文件 URI 与元数据。
+- `pickVideo()`：请求宿主选择单个视频，返回本地文件 URI 与元数据。
+- `vibrate({ type })`：请求设备震动反馈，`type` 支持 `light`、`medium`、`heavy`、`selection`。
+- `getUserProfile()`：请求当前用户公开基础资料，返回 `accountId`、`nickname`、`gender`、`birthday`、`avatarUrl`。
+
+## 4. 检查工具如何使用
 
 在 `package.json` 添加脚本：
 
@@ -91,4 +116,3 @@ npm run nx:submit:prepare
 - `reports/runtime-verify.json` 中 `ok=true`
 - `blockingCount=0`
 - 已生成 `dist.zip`
-

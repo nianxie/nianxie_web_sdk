@@ -70,6 +70,52 @@ export interface MountConfig {
   onStart?: (payload: ProtocolPayload) => void;
 }
 
+export type CameraFacingMode = 'user' | 'environment';
+
+export interface CameraStreamOptions {
+  facingMode?: CameraFacingMode;
+}
+
+export interface NativeRequestOptions extends RequestOptions {
+  [key: string]: unknown;
+}
+
+export interface VibrateOptions extends RequestOptions {
+  type?: 'light' | 'medium' | 'heavy' | 'selection';
+}
+
+export interface PickedFileInfo {
+  uri: string;
+  path: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  mediaType: 'image' | 'video';
+}
+
+export interface NianxiePickedFileResult {
+  ok: boolean;
+  cancelled?: boolean;
+  file?: PickedFileInfo;
+  errorCode?: string;
+  error?: string;
+}
+
+export interface NianxieUserProfile {
+  accountId: string;
+  nickname: string;
+  gender: number;
+  birthday: string;
+  avatarUrl: string;
+}
+
+export interface NianxieUserProfileResult {
+  ok: boolean;
+  user?: NianxieUserProfile;
+  errorCode?: string;
+  error?: string;
+}
+
 export declare class NianxieInteractionClient {
   constructor(options?: NianxieSDKOptions);
 
@@ -92,6 +138,11 @@ export declare class NianxieInteractionClient {
   request<T = unknown>(name: string, params?: PayloadParams, options?: RequestOptions): Promise<T>;
   sendReady<T = unknown>(params?: PayloadParams, options?: RequestOptions): Promise<T>;
   sendEnd<T = unknown>(params?: PayloadParams, options?: RequestOptions): Promise<T>;
+  requestCameraStream(options?: CameraStreamOptions): Promise<MediaStream>;
+  pickImage(options?: NativeRequestOptions): Promise<NianxiePickedFileResult>;
+  pickVideo(options?: NativeRequestOptions): Promise<NianxiePickedFileResult>;
+  vibrate(options?: VibrateOptions): Promise<{ ok: boolean; errorCode?: string; error?: string }>;
+  getUserProfile(options?: RequestOptions): Promise<NianxieUserProfileResult>;
 
   /** Listen for Flutter init signal (window.OnMiniInit). */
   onInit(callback: (payload: ProtocolPayload) => void): () => void;
@@ -118,10 +169,15 @@ export declare const diagnosticErrorCodes: {
   READY_BEFORE_INIT: string;
   END_BEFORE_START: string;
 };
+export declare const errorCodes: {
+  REQUEST_BEFORE_READY: string;
+  CAMERA_UNAVAILABLE: string;
+};
 
 declare const NianxieInteractionSDK: {
   version: string;
   diagnosticErrorCodes: typeof diagnosticErrorCodes;
+  errorCodes: typeof errorCodes;
   NianxieInteractionClient: typeof NianxieInteractionClient;
   createNianxieInteractionSDK: typeof createNianxieInteractionSDK;
 };

@@ -27,6 +27,10 @@
   var DEFAULT_REQUEST_MAP = {
     ready: 'NianxieMiniReady',
     end: 'NianxieMiniEnd',
+    pickImage: 'NianxiePickImage',
+    pickVideo: 'NianxiePickVideo',
+    vibrate: 'NianxieVibrate',
+    getUserProfile: 'NianxieGetUserProfile',
   };
 
   var DEFAULTS = {
@@ -49,6 +53,11 @@
     START_END_TIMEOUT: 'NX_DIAG_START_END_TIMEOUT',
     READY_BEFORE_INIT: 'NX_DIAG_READY_BEFORE_INIT',
     END_BEFORE_START: 'NX_DIAG_END_BEFORE_START',
+  };
+
+  var SDK_ERROR = {
+    REQUEST_BEFORE_READY: 'NX_REQUEST_BEFORE_READY',
+    CAMERA_UNAVAILABLE: 'NX_CAMERA_UNAVAILABLE',
   };
 
   function isObject(value) {
@@ -365,6 +374,24 @@
     return merge({}, this._requestMap);
   };
 
+  NianxieInteractionClient.prototype._isReadySent = function _isReadySent() {
+    return !!(this._diagnostics && this._diagnostics.state && this._diagnostics.state.readySent);
+  };
+
+  NianxieInteractionClient.prototype._createSdkError = function _createSdkError(errorCode, message) {
+    var error = new Error(SDK_TAG + ' ' + message);
+    error.errorCode = errorCode;
+    return error;
+  };
+
+  NianxieInteractionClient.prototype._assertReadyForCapability = function _assertReadyForCapability(capability) {
+    if (this._isReadySent()) return;
+    throw this._createSdkError(
+      SDK_ERROR.REQUEST_BEFORE_READY,
+      String(capability || 'capability') + ' requires sendReady() to complete first.'
+    );
+  };
+
   NianxieInteractionClient.prototype.buildPayload = function buildPayload(eventId, params) {
     var p = params || {};
     var ctx = this._getRequiredContext();
@@ -421,12 +448,76 @@
     }
     var self = this;
     return this._callHandler(this._requestMap.ready, payload, options || {}).then(function (res) {
-      if (store && store.enabled) {
+      if (store && store.state) {
         store.state.readySent = true;
+      }
+      if (store && store.enabled) {
         self._clearDiagnosticTimer('readyTimer');
         self._diagnosticEvent({ phase: 'ready', eventId: 'interaction_ready', detail: 'ready sent' });
       }
       return res;
+    });
+  };
+
+  NianxieInteractionClient.prototype.pickImage = function pickImage(options) {
+    try {
+      this._assertReadyForCapability('pickImage');
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return this.request('pickImage', { extras: options || {} }, options || {});
+  };
+
+  NianxieInteractionClient.prototype.pickVideo = function pickVideo(options) {
+    try {
+      this._assertReadyForCapability('pickVideo');
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return this.request('pickVideo', { extras: options || {} }, options || {});
+  };
+
+  NianxieInteractionClient.prototype.vibrate = function vibrate(options) {
+    try {
+      this._assertReadyForCapability('vibrate');
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return this.request('vibrate', { extras: options || {} }, options || {});
+  };
+
+  NianxieInteractionClient.prototype.getUserProfile = function getUserProfile(options) {
+    try {
+      this._assertReadyForCapability('getUserProfile');
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return this.request('getUserProfile', { extras: {} }, options || {});
+  };
+
+  NianxieInteractionClient.prototype.requestCameraStream = function requestCameraStream(options) {
+    try {
+      this._assertReadyForCapability('requestCameraStream');
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      return Promise.reject(
+        this._createSdkError(
+          SDK_ERROR.CAMERA_UNAVAILABLE,
+          'navigator.mediaDevices.getUserMedia is unavailable.'
+        )
+      );
+    }
+    var cfg = options || {};
+    var facingMode = cfg.facingMode === 'environment' ? 'environment' : 'user';
+    return navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: facingMode },
     });
   };
 
@@ -601,6 +692,7 @@
   return {
     version: VERSION,
     diagnosticErrorCodes: merge({}, DIAGNOSTIC_ERROR),
+    errorCodes: merge({}, SDK_ERROR),
     NianxieInteractionClient: NianxieInteractionClient,
     createNianxieInteractionSDK: createNianxieInteractionSDK,
   };
