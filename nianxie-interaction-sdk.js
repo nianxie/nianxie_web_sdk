@@ -515,10 +515,30 @@
     }
     var cfg = options || {};
     var facingMode = cfg.facingMode === 'environment' ? 'environment' : 'user';
-    return navigator.mediaDevices.getUserMedia({
+    var constraints = {
       audio: false,
       video: { facingMode: facingMode },
-    });
+    };
+    if (typeof console !== 'undefined' && console && typeof console.debug === 'function') {
+      console.debug(SDK_TAG + ' requestCameraStream', constraints);
+    }
+    return navigator.mediaDevices.getUserMedia(constraints).then(
+      function (stream) {
+        if (typeof console !== 'undefined' && console && typeof console.debug === 'function') {
+          var tracks = stream && typeof stream.getVideoTracks === 'function'
+            ? stream.getVideoTracks().length
+            : 0;
+          console.debug(SDK_TAG + ' requestCameraStream success videoTracks=' + tracks);
+        }
+        return stream;
+      },
+      function (error) {
+        if (typeof console !== 'undefined' && console && typeof console.error === 'function') {
+          console.error(SDK_TAG + ' requestCameraStream failed', error);
+        }
+        throw error;
+      }
+    );
   };
 
   NianxieInteractionClient.prototype.sendEnd = function sendEnd(params, options) {
