@@ -31,6 +31,7 @@
     pickVideo: 'NianxiePickVideo',
     vibrate: 'NianxieVibrate',
     getUserProfile: 'NianxieGetUserProfile',
+    requestCameraPermission: 'NianxieRequestCameraPermission',
   };
 
   var DEFAULTS = {
@@ -522,23 +523,41 @@
     if (typeof console !== 'undefined' && console && typeof console.debug === 'function') {
       console.debug(SDK_TAG + ' requestCameraStream', constraints);
     }
-    return navigator.mediaDevices.getUserMedia(constraints).then(
-      function (stream) {
-        if (typeof console !== 'undefined' && console && typeof console.debug === 'function') {
-          var tracks = stream && typeof stream.getVideoTracks === 'function'
-            ? stream.getVideoTracks().length
-            : 0;
-          console.debug(SDK_TAG + ' requestCameraStream success videoTracks=' + tracks);
+    var self = this;
+    return this.request('requestCameraPermission', { extras: {} }, cfg).then(
+      function (permission) {
+        if (!permission || permission.ok === false || permission.granted === false) {
+          throw self._createSdkError(
+            SDK_ERROR.CAMERA_UNAVAILABLE,
+            permission && permission.error
+              ? String(permission.error)
+              : 'Camera permission denied.'
+          );
         }
-        return stream;
-      },
-      function (error) {
-        if (typeof console !== 'undefined' && console && typeof console.error === 'function') {
-          console.error(SDK_TAG + ' requestCameraStream failed', error);
-        }
-        throw error;
+        return navigator.mediaDevices.getUserMedia(constraints).then(
+          function (stream) {
+            if (typeof console !== 'undefined' && console && typeof console.debug === 'function') {
+              var tracks = stream && typeof stream.getVideoTracks === 'function'
+                ? stream.getVideoTracks().length
+                : 0;
+              console.debug(SDK_TAG + ' requestCameraStream success videoTracks=' + tracks);
+            }
+            return stream;
+          },
+          function (error) {
+            if (typeof console !== 'undefined' && console && typeof console.error === 'function') {
+              console.error(SDK_TAG + ' requestCameraStream failed', error);
+            }
+            throw error;
+          }
+        );
       }
-    );
+    ).catch(function (error) {
+      if (typeof console !== 'undefined' && console && typeof console.error === 'function') {
+        console.error(SDK_TAG + ' requestCameraStream failed', error);
+      }
+      throw error;
+    });
   };
 
   NianxieInteractionClient.prototype.sendEnd = function sendEnd(params, options) {
