@@ -69,6 +69,11 @@ sdk.onInit(async () => {
 sdk.onStart(async () => {
   const profile = await sdk.getUserProfile();
   const image = await sdk.pickImage();
+  await sdk.saveImage({
+    dataUrl: document.querySelector("canvas").toDataURL("image/png"),
+    fileName: "result.png",
+    album: "Nianxie",
+  });
   await sdk.vibrate({ type: "light" });
 
   const stream = await sdk.requestCameraStream({ facingMode: "environment" });
@@ -79,8 +84,60 @@ sdk.onStart(async () => {
 - `requestCameraStream({ facingMode })`：请求实时摄像头流，`user` 为前置，`environment` 为后置。
 - `pickImage()`：请求宿主选择单张图片，返回本地文件 URI 与元数据。
 - `pickVideo()`：请求宿主选择单个视频，返回本地文件 URI 与元数据。
+- `saveImage(options)`：请求宿主将图片保存到系统相册。
 - `vibrate({ type })`：请求设备震动反馈，`type` 支持 `light`、`medium`、`heavy`、`selection`。
 - `getUserProfile()`：请求当前用户公开基础资料，返回 `accountId`、`nickname`、`gender`、`birthday`、`avatarUrl`。
+
+### 保存图片
+
+`saveImage` 必须在 `sendReady` 成功之后调用。推荐在用户点击“保存”按钮时调用，以便宿主弹出相册写入授权。
+
+```js
+// 保存 canvas 截图
+const result = await sdk.saveImage({
+  dataUrl: canvas.toDataURL("image/png"),
+  fileName: "score-card.png",
+  album: "Nianxie",
+});
+
+if (!result.ok) {
+  console.warn(result.errorCode, result.error);
+}
+```
+
+也可以保存远程图片、本地 URI 或原始 base64：
+
+```js
+await sdk.saveImage({ url: "https://example.com/image.png", fileName: "image.png" });
+await sdk.saveImage({ uri: "file:///tmp/image.jpg" });
+await sdk.saveImage({ base64, mimeType: "image/png", fileName: "image.png" });
+```
+
+参数说明：
+
+- `dataUrl`：base64 data URL，例如 `canvas.toDataURL("image/png")`。
+- `base64` + `mimeType`：原始 base64 图片数据。
+- `url` / `uri` / `path`：远程图片地址、本地文件 URI 或本地路径，三者任选其一。
+- `fileName`：保存时使用的文件名，建议包含 `.png`、`.jpg`、`.webp` 等扩展名。
+- `album`：可选，相册名称。
+- `maxBytes`：可选，宿主下载或解码的最大字节数，默认 25 MiB。
+
+返回值：
+
+```js
+// 成功
+{ ok: true, uri: "file:///...", path: "/...", album: "Nianxie" }
+
+// 失败
+{ ok: false, errorCode: "NX_SAVE_IMAGE_FAILED", error: "..." }
+```
+
+常见错误码：
+
+- `NX_REQUEST_BEFORE_READY`：未在 `sendReady` 成功之后调用。
+- `NX_SAVE_IMAGE_INVALID_INPUT`：未提供有效图片来源，或图片数据格式不正确。
+- `NX_SAVE_IMAGE_PERMISSION_DENIED`：用户未授予相册写入权限。
+- `NX_SAVE_IMAGE_FAILED`：宿主保存失败，例如下载失败、图片格式不支持或系统相册写入失败。
 
 ## 4. 检查工具如何使用
 

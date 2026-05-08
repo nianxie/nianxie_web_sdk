@@ -18,7 +18,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var VERSION = '1.2.0';
+  var VERSION = '1.3.0';
   var SDK_TAG = '[NianxieInteractionSDK]';
   var CONTEXT_GLOBAL_KEY = '__NianxieMiniContext';
   var CONTEXT_SYNC_FN = 'OnMiniContext';
@@ -29,6 +29,7 @@
     end: 'NianxieMiniEnd',
     pickImage: 'NianxiePickImage',
     pickVideo: 'NianxiePickVideo',
+    saveImage: 'NianxieSaveImage',
     vibrate: 'NianxieVibrate',
     getUserProfile: 'NianxieGetUserProfile',
     requestCameraPermission: 'NianxieRequestCameraPermission',
@@ -59,6 +60,9 @@
   var SDK_ERROR = {
     REQUEST_BEFORE_READY: 'NX_REQUEST_BEFORE_READY',
     CAMERA_UNAVAILABLE: 'NX_CAMERA_UNAVAILABLE',
+    SAVE_IMAGE_INVALID_INPUT: 'NX_SAVE_IMAGE_INVALID_INPUT',
+    SAVE_IMAGE_PERMISSION_DENIED: 'NX_SAVE_IMAGE_PERMISSION_DENIED',
+    SAVE_IMAGE_FAILED: 'NX_SAVE_IMAGE_FAILED',
   };
 
   function isObject(value) {
@@ -476,6 +480,15 @@
       return Promise.reject(e);
     }
     return this.request('pickVideo', { extras: options || {} }, options || {});
+  };
+
+  NianxieInteractionClient.prototype.saveImage = function saveImage(options) {
+    try {
+      this._assertReadyForCapability('saveImage');
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return this.request('saveImage', { extras: options || {} }, options || {});
   };
 
   NianxieInteractionClient.prototype.vibrate = function vibrate(options) {

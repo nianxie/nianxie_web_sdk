@@ -80,6 +80,24 @@ export interface NativeRequestOptions extends RequestOptions {
   [key: string]: unknown;
 }
 
+export interface SaveImageOptions extends RequestOptions {
+  /** Remote image URL, file:// URI, data: URI, or local path. */
+  url?: string;
+  /** Alias for url when callers already store the source as a URI. */
+  uri?: string;
+  /** Local file path inside the WebView/native sandbox. */
+  path?: string;
+  /** Base64 data URL, for example canvas.toDataURL('image/png'). */
+  dataUrl?: string;
+  /** Raw base64 image bytes. Use with mimeType when possible. */
+  base64?: string;
+  mimeType?: string;
+  fileName?: string;
+  album?: string;
+  /** Optional byte limit for native download/decode. Defaults to 25 MiB. */
+  maxBytes?: number;
+}
+
 export interface VibrateOptions extends RequestOptions {
   type?: 'light' | 'medium' | 'heavy' | 'selection';
 }
@@ -97,6 +115,15 @@ export interface NianxiePickedFileResult {
   ok: boolean;
   cancelled?: boolean;
   file?: PickedFileInfo;
+  errorCode?: string;
+  error?: string;
+}
+
+export interface NianxieSaveImageResult {
+  ok: boolean;
+  uri?: string;
+  path?: string;
+  album?: string;
   errorCode?: string;
   error?: string;
 }
@@ -141,6 +168,7 @@ export declare class NianxieInteractionClient {
   requestCameraStream(options?: CameraStreamOptions): Promise<MediaStream>;
   pickImage(options?: NativeRequestOptions): Promise<NianxiePickedFileResult>;
   pickVideo(options?: NativeRequestOptions): Promise<NianxiePickedFileResult>;
+  saveImage(options: SaveImageOptions): Promise<NianxieSaveImageResult>;
   vibrate(options?: VibrateOptions): Promise<{ ok: boolean; errorCode?: string; error?: string }>;
   getUserProfile(options?: RequestOptions): Promise<NianxieUserProfileResult>;
 
@@ -172,6 +200,9 @@ export declare const diagnosticErrorCodes: {
 export declare const errorCodes: {
   REQUEST_BEFORE_READY: string;
   CAMERA_UNAVAILABLE: string;
+  SAVE_IMAGE_INVALID_INPUT: string;
+  SAVE_IMAGE_PERMISSION_DENIED: string;
+  SAVE_IMAGE_FAILED: string;
 };
 
 declare const NianxieInteractionSDK: {

@@ -48,5 +48,20 @@
     "phase": "runtime",
     "severity": "blocking",
     "suggestion": "当前环境不支持 navigator.mediaDevices.getUserMedia，或缺少摄像头能力"
+  },
+  "NX_SAVE_IMAGE_INVALID_INPUT": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "调用 sdk.saveImage(...) 时需提供 url、uri、path、dataUrl 或 base64 中的任意一种图片来源"
+  },
+  "NX_SAVE_IMAGE_PERMISSION_DENIED": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "用户未授予相册写入权限，请在用户触发的保存动作中调用并引导授权"
+  },
+  "NX_SAVE_IMAGE_FAILED": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "图片保存失败，请确认图片来源可访问、格式受支持且文件体积合理"
   }
 }
