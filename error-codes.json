@@ -63,5 +63,25 @@
     "phase": "runtime",
     "severity": "blocking",
     "suggestion": "图片保存失败，请确认图片来源可访问、格式受支持且文件体积合理"
+  },
+  "NX_AD_DOM_UNAVAILABLE": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "请在浏览器页面的 body 加载完成后调用 sdk.showAd(target)"
+  },
+  "NX_AD_CONTAINER_NOT_FOUND": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "请将广告容器放在 body 内，并传入有效的 CSS selector 或 HTMLElement"
+  },
+  "NX_AD_TARGET_OUTSIDE_BODY": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "Google 广告单元需要放在 body 标签内部，请把目标节点移动到 document.body 内"
+  },
+  "NX_AD_PUSH_FAILED": {
+    "phase": "runtime",
+    "severity": "blocking",
+    "suggestion": "请确认页面允许加载 Google AdSense 脚本，并避免重复处理同一个已异常的广告单元"
   }
 }

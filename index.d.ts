@@ -143,6 +143,15 @@ export interface NianxieUserProfileResult {
   error?: string;
 }
 
+export interface NianxieShowAdResult {
+  ok: boolean;
+  scriptCreated?: boolean;
+  adUnitCreated?: boolean;
+  pushed?: boolean;
+  errorCode?: string;
+  error?: string;
+}
+
 export declare class NianxieInteractionClient {
   constructor(options?: NianxieSDKOptions);
 
@@ -171,6 +180,7 @@ export declare class NianxieInteractionClient {
   saveImage(options: SaveImageOptions): Promise<NianxieSaveImageResult>;
   vibrate(options?: VibrateOptions): Promise<{ ok: boolean; errorCode?: string; error?: string }>;
   getUserProfile(options?: RequestOptions): Promise<NianxieUserProfileResult>;
+  showAd(target: string | HTMLElement): Promise<NianxieShowAdResult>;
 
   /** Listen for Flutter init signal (window.OnMiniInit). */
   onInit(callback: (payload: ProtocolPayload) => void): () => void;
@@ -203,6 +213,10 @@ export declare const errorCodes: {
   SAVE_IMAGE_INVALID_INPUT: string;
   SAVE_IMAGE_PERMISSION_DENIED: string;
   SAVE_IMAGE_FAILED: string;
+  AD_DOM_UNAVAILABLE: string;
+  AD_CONTAINER_NOT_FOUND: string;
+  AD_TARGET_OUTSIDE_BODY: string;
+  AD_PUSH_FAILED: string;
 };
 
 declare const NianxieInteractionSDK: {
@@ -222,5 +236,6 @@ declare global {
     OnMiniStart?: (payload: ProtocolPayload) => void;
     OnMiniContext?: (payload: Partial<ProtocolPayload>) => void;
     __NianxieMiniContext?: Partial<MiniContext>;
+    adsbygoogle?: Array<Record<string, unknown>>;
   }
 }

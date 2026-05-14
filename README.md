@@ -139,7 +139,51 @@ await sdk.saveImage({ base64, mimeType: "image/png", fileName: "image.png" });
 - `NX_SAVE_IMAGE_PERMISSION_DENIED`：用户未授予相册写入权限。
 - `NX_SAVE_IMAGE_FAILED`：宿主保存失败，例如下载失败、图片格式不支持或系统相册写入失败。
 
-## 4. 检查工具如何使用
+## 4. 广告展示
+
+`showAd(target)` 用于在页面 `<body>` 内指定位置展示固定广告单元。广告参数由 SDK 内置，开发者只需要传入广告容器的 CSS selector 或 HTMLElement。
+
+推荐在 `onStart` 之后调用，避免广告脚本加载影响 ready 时序。
+
+```html
+<body>
+  <div id="ad-here"></div>
+
+  <script>
+    sdk.onStart(async () => {
+      const result = await sdk.showAd("#ad-here");
+      if (!result.ok) {
+        console.warn(result.errorCode, result.error);
+      }
+    });
+  </script>
+</body>
+```
+
+SDK 会在目标节点内插入等价于以下广告单元的 DOM，并对每个广告单元执行一次 `adsbygoogle.push({})`：
+
+```html
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9702091132168305"
+     crossorigin="anonymous"></script>
+<!-- 展示1 -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-9702091132168305"
+     data-ad-slot="2003439279"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+```
+
+说明：
+
+- `target` 必须在 `document.body` 内，否则返回 `NX_AD_TARGET_OUTSIDE_BODY`。
+- 找不到目标节点会返回 `NX_AD_CONTAINER_NOT_FOUND`。
+- AdSense 外部脚本全页只加载一次；每次 `showAd(target)` 都会新增一个广告单元并执行一次 `push({})`。
+
+## 5. 检查工具如何使用
 
 在 `package.json` 添加脚本：
 

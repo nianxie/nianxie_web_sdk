@@ -23,6 +23,11 @@
   var CONTEXT_GLOBAL_KEY = '__NianxieMiniContext';
   var CONTEXT_SYNC_FN = 'OnMiniContext';
   var FORBIDDEN_KEYS = { __proto__: true, constructor: true, prototype: true };
+  var ADSENSE_CLIENT = 'ca-pub-9702091132168305';
+  var ADSENSE_SLOT = '2003439279';
+  var ADSENSE_SCRIPT_SRC =
+    'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' +
+    ADSENSE_CLIENT;
 
   var DEFAULT_REQUEST_MAP = {
     ready: 'NianxieMiniReady',
@@ -63,6 +68,10 @@
     SAVE_IMAGE_INVALID_INPUT: 'NX_SAVE_IMAGE_INVALID_INPUT',
     SAVE_IMAGE_PERMISSION_DENIED: 'NX_SAVE_IMAGE_PERMISSION_DENIED',
     SAVE_IMAGE_FAILED: 'NX_SAVE_IMAGE_FAILED',
+    AD_DOM_UNAVAILABLE: 'NX_AD_DOM_UNAVAILABLE',
+    AD_CONTAINER_NOT_FOUND: 'NX_AD_CONTAINER_NOT_FOUND',
+    AD_TARGET_OUTSIDE_BODY: 'NX_AD_TARGET_OUTSIDE_BODY',
+    AD_PUSH_FAILED: 'NX_AD_PUSH_FAILED',
   };
 
   function isObject(value) {
@@ -85,6 +94,71 @@
 
   function hasNonEmptyText(value) {
     return value != null && String(value).trim() !== '';
+  }
+
+  function isElementNode(value) {
+    return !!(value && value.nodeType === 1);
+  }
+
+  function isNodeInsideBody(doc, node) {
+    if (!doc || !doc.body || !node) return false;
+    var current = node;
+    while (current) {
+      if (current === doc.body) return true;
+      current = current.parentNode;
+    }
+    return false;
+  }
+
+  function adFailure(errorCode, message) {
+    return {
+      ok: false,
+      errorCode: errorCode,
+      error: message,
+    };
+  }
+
+  function findAdsenseScript(doc) {
+    if (!doc || typeof doc.getElementsByTagName !== 'function') return null;
+    var scripts = doc.getElementsByTagName('script');
+    for (var i = 0; i < scripts.length; i += 1) {
+      var src = String(scripts[i].src || scripts[i].getAttribute('src') || '');
+      if (
+        src.indexOf('pagead2.googlesyndication.com/pagead/js/adsbygoogle.js') >= 0 &&
+        src.indexOf('client=' + ADSENSE_CLIENT) >= 0
+      ) {
+        return scripts[i];
+      }
+    }
+    return null;
+  }
+
+  function ensureAdsenseScript(doc, insertParent) {
+    var existing = findAdsenseScript(doc);
+    if (existing) {
+      return { script: existing, created: false };
+    }
+    var script = doc.createElement('script');
+    script.async = true;
+    script.src = ADSENSE_SCRIPT_SRC;
+    script.crossOrigin = 'anonymous';
+    script.setAttribute('async', '');
+    script.setAttribute('src', ADSENSE_SCRIPT_SRC);
+    script.setAttribute('crossorigin', 'anonymous');
+    insertParent.appendChild(script);
+    return { script: script, created: true };
+  }
+
+  function createAdsenseUnit(doc) {
+    var ins = doc.createElement('ins');
+    ins.className = 'adsbygoogle';
+    ins.setAttribute('class', 'adsbygoogle');
+    ins.setAttribute('style', 'display:block');
+    ins.setAttribute('data-ad-client', ADSENSE_CLIENT);
+    ins.setAttribute('data-ad-slot', ADSENSE_SLOT);
+    ins.setAttribute('data-ad-format', 'auto');
+    ins.setAttribute('data-full-width-responsive', 'true');
+    return ins;
   }
 
   function safeCall(fn, payload) {
@@ -507,6 +581,79 @@
       return Promise.reject(e);
     }
     return this.request('getUserProfile', { extras: {} }, options || {});
+  };
+
+  NianxieInteractionClient.prototype.showAd = function showAd(target) {
+    if (
+      typeof window === 'undefined' ||
+      typeof document === 'undefined' ||
+      !document ||
+      !document.body ||
+      typeof document.createElement !== 'function'
+    ) {
+      return Promise.resolve(
+        adFailure(
+          SDK_ERROR.AD_DOM_UNAVAILABLE,
+          'showAd requires a browser document with a body element.'
+        )
+      );
+    }
+
+    var container = null;
+    if (typeof target === 'string') {
+      var selector = String(target || '').trim();
+      if (!selector) {
+        return Promise.resolve(
+          adFailure(SDK_ERROR.AD_CONTAINER_NOT_FOUND, 'showAd(target) requires a selector.')
+        );
+      }
+      try {
+        container = document.querySelector(selector);
+      } catch (error) {
+        return Promise.resolve(
+          adFailure(
+            SDK_ERROR.AD_CONTAINER_NOT_FOUND,
+            'showAd target selector is invalid: ' + String(error && error.message ? error.message : error)
+          )
+        );
+      }
+    } else if (isElementNode(target)) {
+      container = target;
+    }
+
+    if (!container) {
+      return Promise.resolve(
+        adFailure(SDK_ERROR.AD_CONTAINER_NOT_FOUND, 'showAd target was not found.')
+      );
+    }
+    if (!isNodeInsideBody(document, container)) {
+      return Promise.resolve(
+        adFailure(SDK_ERROR.AD_TARGET_OUTSIDE_BODY, 'showAd target must be inside document.body.')
+      );
+    }
+
+    var scriptResult = ensureAdsenseScript(document, container);
+    var adUnit = createAdsenseUnit(document);
+    container.appendChild(adUnit);
+
+    try {
+      window.adsbygoogle = window.adsbygoogle || [];
+      window.adsbygoogle.push({});
+    } catch (error) {
+      return Promise.resolve(
+        adFailure(
+          SDK_ERROR.AD_PUSH_FAILED,
+          'adsbygoogle.push failed: ' + String(error && error.message ? error.message : error)
+        )
+      );
+    }
+
+    return Promise.resolve({
+      ok: true,
+      scriptCreated: !!scriptResult.created,
+      adUnitCreated: true,
+      pushed: true,
+    });
   };
 
   NianxieInteractionClient.prototype.requestCameraStream = function requestCameraStream(options) {
